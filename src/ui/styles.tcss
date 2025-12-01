@@ -1,0 +1,114 @@
+/* Discord-inspired theme */
+
+Screen {
+    background: #36393f;
+}
+
+#sidebar {
+    width: 20;
+    background: #2f3136;
+    border-right: solid #202225;
+}
+
+#chat-pane {
+    background: #36393f;
+}
+
+#member-list {
+    width: 20;
+    background: #2f3136;
+    border-left: solid #202225;
+}
+
+#input-bar {
+    dock: bottom;
+    height: 3;
+    background: #40444b;
+    border-top: solid #202225;
+}
+
+Input {
+    background: #40444b;
+    color: #dcddde;
+    border: none;
+}
+
+Input:focus {
+    border: solid #5865F2;
+}
+
+.channel-item {
+    color: #8e9297;
+    padding: 0 1;
+}
+
+.channel-item:hover {
+    background: #393c43;
+    color: #dcddde;
+}
+
+.channel-active {
+    color: #ffffff;
+    background: #393c43;
+}
+
+.unread {
+    color: #ffffff;
+    text-style: bold;
+}
+
+.member-online {
+    color: #43b581;
+}
+
+.member-offline {
+    color: #747f8d;
+}
+
+.message {
+    padding: 0 1;
+    color: #dcddde;
+}
+
+.message-author {
+    color: #5865F2;
+    text-style: bold;
+}
+
+.system-message {
+    color: #faa61a;
+    text-style: italic;
+}
+
+.embed {
+    background: #2f3136;
+    border-left: thick #5865F2;
+    padding: 1 2;
+    margin: 1 0;
+}
+
+.embed-success {
+    border-left: thick #43b581;
+}
+
+.embed-error {
+    border-left: thick #ed4245;
+}
+
+/* Teletext Dashboard */
+.teletext {
+    background: #000000;
+    color: #00ffff;
+}
+
+.teletext-header {
+    background: #0000ff;
+    color: #ffff00;
+    text-style: bold;
+    padding: 1;
+}
+
+.teletext-block {
+    color: #00ff00;
+    text-style: bold;
+}

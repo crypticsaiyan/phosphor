@@ -1,0 +1,22 @@
+{
+  "servers": [
+    {
+      "name": "Default",
+      "host": "irc.libera.chat",
+      "port": 6667,
+      "ssl": false,
+      "nick": "cord_user",
+      "channels": ["#general", "#ops", "#incidents"]
+    }
+  ],
+  "theme": {
+    "discord_gray": "#36393f",
+    "blurple": "#5865F2",
+    "online_green": "#43b581",
+    "offline_gray": "#747f8d"
+  },
+  "audio": {
+    "enabled": true,
+    "volume": 0.5
+  }
+}

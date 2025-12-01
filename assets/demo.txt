@@ -1,0 +1,28 @@
+# Sample file for wormhole demo
+# This file demonstrates the peer-to-peer file transfer feature
+
+## Configuration Example
+
+server: production
+database:
+  host: db.example.com
+  port: 5432
+  ssl: true
+
+api_keys:
+  openai: sk-demo-key-12345
+  stripe: sk_test_demo_67890
+
+## Notes
+
+This file would normally contain sensitive configuration.
+With Cord-TUI's wormhole feature, you can transfer it
+peer-to-peer without uploading to the cloud.
+
+No Slack. No Dropbox. No traces.
+Just pure encrypted magic.
+
+Usage:
+  /send demo.txt
+  # Share the code with your teammate
+  # They run: /grab <code>

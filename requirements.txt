@@ -1,0 +1,7 @@
+textual>=0.47.0
+bottom>=2.2.0
+magic-wormhole>=0.13.0
+simpleaudio>=1.0.4
+rich>=13.7.0
+plotext>=5.2.8
+aiofiles>=23.2.1
