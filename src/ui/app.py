@@ -395,6 +395,15 @@ class CordTUI(App):
         """Handle channel selection from search dialog."""
         channel = event.channel
         
+        # Check if already joined
+        if channel in self.channels_joined:
+            # Just switch to the channel
+            self.current_channel = channel
+            self.chat_pane.switch_channel(self.current_channel)
+            self.chat_pane.add_message("System", f"Switched to {channel}", is_system=True)
+            self.input_bar.placeholder = f"Message {self.current_channel}"
+            return
+        
         # Add to sidebar if not already there
         sidebar = self.query_one("#sidebar", Sidebar)
         if channel not in sidebar.channels:
