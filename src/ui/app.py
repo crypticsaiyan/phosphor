@@ -317,20 +317,52 @@ class CordTUI(App):
                 self.chat_pane.add_embed("File Received", "Transfer complete!", "success")
         
         elif cmd == "ai":
-            # Execute MCP command
-            self.chat_pane.add_message("System", f"Executing AI command: {args}", is_system=True)
-            result = await self.mcp.execute(args)
+            # Check if this is a private query
+            is_private = args.lower().startswith("private ")
+            if is_private:
+                # Remove "private" prefix
+                query = args[8:].strip()
+            else:
+                query = args.strip()
             
+            # Show processing message
+            self.chat_pane.add_message("System", f"🤖 Processing: {query[:50]}...", is_system=True)
+            
+            # Execute MCP command
+            result = await self.mcp.execute(query)
+            
+            # Format the response
             if "error" in result:
-                self.chat_pane.add_embed("AI Error", result["error"], "error")
+                response_text = f"❌ Error: {result['error']}"
             elif "message" in result:
-                # Plain text message (like help text)
-                self.chat_pane.add_embed("AI Assistant", result["message"], "info")
+                response_text = result["message"]
             else:
                 # Format result as JSON
                 import json
-                result_str = json.dumps(result, indent=2)
-                self.chat_pane.add_embed("AI Result", f"```json\n{result_str}\n```", "success")
+                response_text = json.dumps(result, indent=2)
+            
+            # Determine where to send the response
+            if is_private:
+                # Private mode: Show only to user (in chat pane)
+                self.chat_pane.add_embed("AI Assistant (Private)", response_text, "info")
+            else:
+                # Public mode: Send to IRC channel
+                if self.irc_connected and self.current_channel in self.channels_joined:
+                    # Send each line to IRC channel
+                    lines = response_text.split('\n')
+                    for line in lines:
+                        if line.strip():  # Skip empty lines
+                            try:
+                                self.irc.send_message(self.current_channel, line)
+                                # Also show in local chat pane
+                                self.chat_pane.add_message("You (AI)", line, False, self.current_channel)
+                            except Exception as e:
+                                self.chat_pane.add_message("System", f"Failed to send to IRC: {e}", is_system=True)
+                                break
+                else:
+                    # Not connected to IRC, show locally only
+                    self.chat_pane.add_embed("AI Assistant (Local)", response_text, "info")
+                    self.chat_pane.add_message("System", "💡 Not connected to IRC. Result shown locally only.", is_system=True)
         
         elif cmd == "join":
             # Join or create channel

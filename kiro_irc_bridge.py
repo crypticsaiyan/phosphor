@@ -70,23 +70,110 @@ class KiroIRCBridge:
         if not prompt:
             return
         
-        # Determine where to respond
-        reply_target = nick if is_dm else target
+        # Check if this is a private request
+        is_private_request = prompt.lower().startswith("private ")
+        if is_private_request:
+            # Remove "private" prefix from prompt
+            prompt = prompt[8:].strip()
         
         # Show typing indicator
-        self.irc.msg(reply_target, f"🤖 Processing: {prompt[:50]}...")
+        typing_target = nick if is_dm else target
+        self.irc.msg(typing_target, f"🤖 Processing: {prompt[:50]}...")
         
         try:
-            # Call Kiro with MCP tools
-            result = await self._call_kiro(nick, reply_target, prompt)
+            # Call the AI with the full command context
+            full_command = f"/ai private {prompt}" if is_private_request else f"/ai {prompt}"
+            result = await self._call_ai(nick, target, full_command, is_dm)
+            
+            # Parse visibility from response
+            visibility, content = self._parse_visibility(result)
+            
+            # Determine final reply target based on visibility
+            if visibility == "private" or is_dm:
+                # Always send to user privately
+                reply_target = nick
+            else:
+                # Send to channel
+                reply_target = target
             
             # Send response back to IRC
-            self._send_multiline(reply_target, result)
+            self._send_multiline(reply_target, content)
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
-            self.irc.msg(reply_target, error_msg)
+            self.irc.msg(nick, error_msg)  # Errors always go to user
             print(f"Error processing request: {e}", file=sys.stderr)
+    
+    def _parse_visibility(self, response: str) -> tuple[str, str]:
+        """
+        Parse visibility directive from AI response.
+        
+        Returns:
+            (visibility, content) where visibility is "public" or "private"
+        """
+        lines = response.split('\n', 2)
+        
+        if len(lines) >= 1 and lines[0].strip().startswith("VISIBILITY:"):
+            visibility_line = lines[0].strip()
+            if "private" in visibility_line.lower():
+                visibility = "private"
+            else:
+                visibility = "public"
+            
+            # Content is everything after the visibility line (skip blank line if present)
+            if len(lines) >= 2:
+                content = '\n'.join(lines[1:]).strip()
+            else:
+                content = ""
+        else:
+            # No visibility directive, default to public
+            visibility = "public"
+            content = response
+        
+        return visibility, content
+    
+    async def _call_ai(self, user: str, channel: str, command: str, is_dm: bool) -> str:
+        """
+        Call the AI assistant with the command.
+        
+        For now, this uses the local MCP client directly.
+        In production, this would call Kiro CLI or another AI service.
+        """
+        # Import here to avoid circular dependencies
+        from src.core.mcp_client import MCPClient
+        
+        mcp = MCPClient()
+        
+        # Extract the actual prompt from the command
+        if command.startswith("/ai private "):
+            prompt = command[12:]  # Remove "/ai private "
+            is_private = True
+        elif command.startswith("/ai "):
+            prompt = command[4:]  # Remove "/ai "
+            is_private = False
+        else:
+            prompt = command
+            is_private = False
+        
+        # Build context for the AI
+        context = self._build_ai_context(user, channel, command, is_dm, is_private)
+        
+        # Execute the command
+        result = await mcp.execute(prompt)
+        
+        # Format the response with visibility directive
+        if "error" in result:
+            response_content = f"❌ Error: {result['error']}"
+        elif "message" in result:
+            response_content = result["message"]
+        else:
+            response_content = json.dumps(result, indent=2)
+        
+        # Add visibility directive
+        visibility = "private" if is_private else "public"
+        full_response = f"VISIBILITY: {visibility}\n\n{response_content}"
+        
+        return full_response
     
     async def _call_kiro(self, user: str, channel: str, prompt: str) -> str:
         """Call Kiro CLI with MCP tools."""
@@ -132,8 +219,41 @@ class KiroIRCBridge:
             # Fallback: return raw output
             return stdout.decode().strip()
     
+    def _build_ai_context(self, user: str, channel: str, command: str, is_dm: bool, is_private: bool) -> str:
+        """Build context for the AI assistant."""
+        visibility = "private" if is_private else "public"
+        target_type = "DM" if is_dm else "channel"
+        
+        context = f"""DevOps Channel Assistant - IRC Context
+
+Channel: {channel}
+User: {user}
+Command: {command}
+Target: {target_type}
+Requested Visibility: {visibility}
+
+PROTOCOL:
+- You MUST start your response with: VISIBILITY: {visibility}
+- Then add a blank line
+- Then provide your answer
+
+BEHAVIOR:
+- If VISIBILITY: public → Answer goes to the channel (keep it concise, no secrets)
+- If VISIBILITY: private → Answer goes only to the user (can be detailed)
+
+Your PRIMARY task: Check Docker container health when asked.
+- Use emojis for status (✅ 🟡 ❌)
+- Be concise for IRC
+- Suggest actionable next steps
+- NEVER run destructive commands
+- Read-only operations only
+
+Respond now:"""
+        
+        return context
+    
     def _build_prompt(self, user: str, channel: str, prompt: str) -> str:
-        """Build a full prompt with context for Kiro."""
+        """Build a full prompt with context for Kiro CLI (legacy method)."""
         # If prompt is empty or very generic, default to health check
         if not prompt or prompt.lower() in ["help", "status", "check"]:
             prompt = "check docker health"

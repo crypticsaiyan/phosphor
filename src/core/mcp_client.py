@@ -36,27 +36,40 @@ class MCPClient:
             # Default behavior: check Docker health
             return await self._docker_health({"prompt": prompt_lower})
         
+        # Check if this is a question (starts with what, why, how, explain, etc.)
+        question_words = ["what", "why", "how", "explain", "tell me", "show me", "describe", "when", "where", "who"]
+        is_question = any(prompt_lower.startswith(word) for word in question_words)
+        
+        if is_question:
+            # Handle questions with helpful responses
+            return self._handle_question(prompt, prompt_lower)
+        
         # Match prompt to tools
-        # Priority: Docker health checks for most queries
-        if any(keyword in prompt_lower for keyword in ["docker", "container", "health", "check", "status", "prod", "staging"]):
+        # Be more specific about Docker health checks
+        if any(keyword in prompt_lower for keyword in ["docker", "container"]):
+            # Docker-related queries
+            if "stats" in prompt_lower:
+                tool = "docker-stats"
+            else:
+                tool = "docker-health"
+        elif any(keyword in prompt_lower for keyword in ["prod", "staging", "dev"]) and not is_question:
+            # Environment filters for health checks
             tool = "docker-health"
-        elif "stats" in prompt_lower and "docker" in prompt_lower:
-            tool = "docker-stats"
         elif "system" in prompt_lower or "uname" in prompt_lower or "os" in prompt_lower:
             tool = "system-info"
         elif "database" in prompt_lower or "db" in prompt_lower:
             tool = "analyze-db"
         elif "list" in prompt_lower or "ls" in prompt_lower or "dir" in prompt_lower:
             tool = "list-files"
-        elif "read" in prompt_lower or "cat" in prompt_lower or "show" in prompt_lower:
+        elif "read" in prompt_lower or "cat" in prompt_lower:
             tool = "read-file"
         elif "search" in prompt_lower or "find" in prompt_lower:
             tool = "search-files"
         elif "help" in prompt_lower:
             return {"message": self._get_help_text()}
         else:
-            # Default to docker health for ambiguous queries
-            tool = "docker-health"
+            # For ambiguous queries, provide guidance instead of defaulting
+            return self._handle_ambiguous_query(prompt)
         
         if tool not in self.tools:
             return {
@@ -81,26 +94,245 @@ class MCPClient:
         except Exception as e:
             return {"error": str(e)}
     
+    def _handle_question(self, prompt: str, prompt_lower: str) -> Dict[str, Any]:
+        """Handle question-type queries with helpful responses."""
+        # Docker health-related questions
+        if "healthy" in prompt_lower or "health" in prompt_lower:
+            return {"message": self._explain_health_status()}
+        elif "restart" in prompt_lower:
+            return {"message": self._explain_restarts()}
+        elif "log" in prompt_lower:
+            return {"message": self._explain_logs()}
+        elif "container" in prompt_lower or "docker" in prompt_lower:
+            return {"message": self._explain_docker_basics()}
+        else:
+            # Generic question response
+            return {"message": f"""I'm a DevOps Health Bot focused on Docker container monitoring.
+
+Your question: "{prompt}"
+
+I can help with:
+• Docker container health checks
+• Container status and restarts
+• System information
+• File operations
+
+For Docker health: /ai check docker
+For help: /ai help
+
+Note: I don't have a general AI model to answer arbitrary questions.
+I'm specialized in DevOps monitoring tasks."""}
+    
+    def _handle_ambiguous_query(self, prompt: str) -> Dict[str, Any]:
+        """Handle ambiguous queries that don't match any tool."""
+        return {"message": f"""I'm not sure what to do with: "{prompt}"
+
+I can help with:
+
+**Docker Health Checks:**
+• /ai - Check all containers
+• /ai prod - Check production
+• /ai staging web - Check staging web
+
+**Questions I Can Answer:**
+• /ai private explain what "healthy" means
+• /ai private explain restart counts
+• /ai private explain how to check logs
+
+**File Operations:**
+• /ai list-files [path]
+• /ai read-file <path>
+
+**Other:**
+• /ai system-info
+• /ai help
+
+Try one of these commands or ask a specific question about Docker health!"""}
+    
+    def _explain_health_status(self) -> str:
+        """Explain Docker health status."""
+        return """**Docker Health Status Explained:**
+
+**Healthy** ✅
+- Container is running
+- Health check command succeeds (exit code 0)
+- Has been passing consistently
+
+**Unhealthy** ❌
+- Container is running
+- Health check command fails (exit code 1)
+- May indicate service issues
+
+**Starting** 🔄
+- Container just started
+- Health check hasn't completed yet
+- Wait a moment and check again
+
+**No Health Check** ⚪
+- Container has no HEALTHCHECK defined
+- Status based on running/stopped only
+
+**Example Health Check:**
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s \\
+  CMD curl -f http://localhost/ || exit 1
+```
+
+This checks every 30 seconds if the web server responds.
+
+**To check your containers:**
+/ai check docker health"""
+    
+    def _explain_restarts(self) -> str:
+        """Explain container restart counts."""
+        return """**Container Restart Count Explained:**
+
+**What it means:**
+The restart count shows how many times Docker has automatically restarted a container.
+
+**Why containers restart:**
+1. **Crash** - Process exits with non-zero code
+2. **Health check failure** - Repeated health check failures
+3. **OOM (Out of Memory)** - Container runs out of memory
+4. **Manual restart** - You or a script restarted it
+
+**What's normal:**
+• 0 restarts = Good! Container is stable
+• 1-2 restarts = Acceptable (maybe during deployment)
+• 3+ restarts = Warning! Something is wrong
+• 10+ restarts = Critical! Container is crash-looping
+
+**How to investigate:**
+```bash
+# Check logs for errors
+docker logs <container-name>
+
+# Check exit code
+docker inspect <container-name> | grep ExitCode
+
+# Check resource usage
+docker stats <container-name>
+```
+
+**To check your containers:**
+/ai check docker health"""
+    
+    def _explain_logs(self) -> str:
+        """Explain how to check container logs."""
+        return """**How to Check Container Logs:**
+
+**View recent logs:**
+```bash
+docker logs <container-name>
+```
+
+**Follow logs in real-time:**
+```bash
+docker logs -f <container-name>
+```
+
+**Show last 100 lines:**
+```bash
+docker logs --tail 100 <container-name>
+```
+
+**Show logs with timestamps:**
+```bash
+docker logs -t <container-name>
+```
+
+**Show logs since a time:**
+```bash
+docker logs --since 10m <container-name>  # Last 10 minutes
+docker logs --since 2h <container-name>   # Last 2 hours
+```
+
+**Common log locations inside containers:**
+- `/var/log/` - System logs
+- `/var/log/nginx/` - Nginx logs
+- `/var/log/apache2/` - Apache logs
+- Application-specific locations
+
+**To see which containers need attention:**
+/ai check docker health
+
+Then check logs for any unhealthy or restarting containers."""
+    
+    def _explain_docker_basics(self) -> str:
+        """Explain Docker basics."""
+        return """**Docker Container Basics:**
+
+**What is a container?**
+A lightweight, standalone package that includes everything needed to run an application: code, runtime, libraries, and dependencies.
+
+**Container States:**
+• **Running** - Container is active and executing
+• **Exited** - Container stopped (may be normal or error)
+• **Restarting** - Container is restarting (may indicate issues)
+• **Paused** - Container is paused (rare)
+
+**Common Commands:**
+```bash
+# List running containers
+docker ps
+
+# List all containers (including stopped)
+docker ps -a
+
+# Check container health
+docker inspect <container-name>
+
+# View container logs
+docker logs <container-name>
+
+# Check resource usage
+docker stats <container-name>
+
+# Start a stopped container
+docker start <container-name>
+
+# Stop a running container
+docker stop <container-name>
+
+# Restart a container
+docker restart <container-name>
+```
+
+**To check your containers with this bot:**
+/ai check docker health"""
+    
     def _get_help_text(self) -> str:
         """Get help text for available commands."""
         return """🤖 DevOps Health Bot - Available Commands:
 
-**Docker Health (Default):**
+**Docker Health Checks:**
 • /ai - Check all Docker containers
 • /ai prod - Check production containers
 • /ai staging web - Check staging web containers
 • /ai docker health - Full health report
 
+**Questions I Can Answer:**
+• /ai private explain what "healthy" means
+• /ai private explain restart counts
+• /ai private explain how to check logs
+• /ai private explain docker basics
+
+**File Operations:**
+• /ai list-files [path] - List directory contents
+• /ai read-file <path> - Read file contents
+• /ai search-files <pattern> - Search for files
+
 **Other Tools:**
 • /ai docker-stats - Raw Docker statistics
 • /ai system-info - System information
-• /ai list-files [path] - List directory contents
-• /ai read-file <path> - Read file contents
 
 **Examples:**
 • /ai
 • /ai prod api
-• /ai check docker health"""
+• /ai private explain healthy
+• /ai list-files /var/log
+
+**Note:** I'm specialized in DevOps monitoring, not a general AI assistant."""
     
     async def _analyze_db(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze database (dummy implementation)."""
