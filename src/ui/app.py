@@ -77,9 +77,9 @@ class CordTUI(App):
         yield Header()
         
         with Horizontal():
-            # Left sidebar - channels
-            channels = self.config["servers"][0]["channels"]
-            yield Sidebar(channels, id="sidebar")
+            # Left sidebar - channels (will be updated after server selection)
+            default_channels = self.config.get("servers", [{}])[0].get("channels", [])
+            yield Sidebar(default_channels, id="sidebar")
             
             # Center - chat pane
             with Container(id="chat-container"):
@@ -100,18 +100,22 @@ class CordTUI(App):
 
     def on_home_screen_settings_confirmed(self, event: HomeScreen.SettingsConfirmed):
         """Handle settings from home screen."""
+        # Use the selected server from the event
+        server = event.server
+        
         # Update config with user settings
-        self.config["servers"][0]["nick"] = event.nick
         self.config["audio"]["enabled"] = event.audio_enabled
         self.config["audio"]["volume"] = event.volume
         
-        # Initialize IRC client with chosen nick
-        server = self.config["servers"][0]
+        # Store selected server config for later use
+        self.selected_server = server
+        
+        # Initialize IRC client with chosen server and nick
         self.irc = IRCClient(
             host=server["host"],
             port=server["port"],
             nick=event.nick,
-            ssl=server["ssl"]
+            ssl=server.get("ssl", False)
         )
         self.irc.set_message_callback(self._on_irc_message)
         self.irc.set_members_callback(self._on_members_update)
@@ -133,6 +137,15 @@ class CordTUI(App):
         self.input_bar = self.query_one("#input-bar", Input)
         self.member_list = self.query_one("#member-list", MemberList)
         
+        # Update sidebar with selected server's channels
+        sidebar = self.query_one("#sidebar", Sidebar)
+        server_channels = self.selected_server.get("channels", [])
+        sidebar.update_channels(server_channels)
+        
+        # Set initial channel from server config
+        if server_channels:
+            self.current_channel = server_channels[0]
+        
         # Set initial channel in chat pane
         self.chat_pane.current_channel = self.current_channel
         
@@ -140,7 +153,9 @@ class CordTUI(App):
         self.input_bar.placeholder = "Connecting to IRC..."
         
         # Welcome message
+        server_name = self.selected_server.get("name", self.selected_server.get("host"))
         self.chat_pane.add_message("System", f"Welcome to Cord-TUI, {self.irc.nick}! 🚀", is_system=True)
+        self.chat_pane.add_message("System", f"Connecting to {server_name}...", is_system=True)
         self.chat_pane.add_message("System", "Press F1 for Teletext Dashboard", is_system=True)
         
         # Connect to IRC in background
@@ -171,7 +186,8 @@ class CordTUI(App):
             self.chat_pane.add_message("System", "✓ Connected to IRC!", is_system=True)
             
             # Join channels with loading indicators
-            for channel in self.config["servers"][0]["channels"]:
+            server_channels = self.selected_server.get("channels", [])
+            for channel in server_channels:
                 self.chat_pane.add_message("System", f"Joining {channel}...", is_system=True)
                 self.irc.join_channel(channel)
                 

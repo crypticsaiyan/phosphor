@@ -37,6 +37,14 @@ class Sidebar(Container):
         if event.node.data:
             self.active_channel = event.node.data
             self.post_message(self.ChannelSelected(event.node.data))
+    
+    def update_channels(self, channels: list[str]):
+        """Update the channel list with new channels."""
+        self.channels = channels
+        tree = self.query_one(Tree)
+        tree.root.remove_children()
+        for channel in self.channels:
+            tree.root.add_leaf(f"# {channel}", data=channel)
 
 
 class MemberList(Container):

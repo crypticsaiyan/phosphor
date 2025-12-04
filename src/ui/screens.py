@@ -28,35 +28,57 @@ class HomeScreen(Screen):
     BINDINGS = [
         ("up", "nav_up", "Up"),
         ("down", "nav_down", "Down"),
-        ("left", "vol_down", "Vol-"),
-        ("right", "vol_up", "Vol+"),
+        ("left", "adjust_left", "Left"),
+        ("right", "adjust_right", "Right"),
         ("enter", "confirm", "Connect"),
-        ("tab", "toggle_audio", "Toggle Audio"),
     ]
 
     class SettingsConfirmed(Message):
         """Message sent when user confirms settings."""
-        def __init__(self, nick: str, audio_enabled: bool, volume: float):
+        def __init__(self, nick: str, audio_enabled: bool, volume: float, server: dict):
             self.nick = nick
             self.audio_enabled = audio_enabled
             self.volume = volume
+            self.server = server
             super().__init__()
 
     def __init__(self, config: dict = None, **kwargs):
         super().__init__(**kwargs)
         self.config = config or {}
-        self.default_nick = self.config.get("servers", [{}])[0].get("nick", "cord_user")
+        self.servers = self.config.get("servers", [{"name": "Libera.Chat", "host": "irc.libera.chat", "port": 6667, "ssl": False, "nick": "cord_user", "channels": []}])
+        self.selected_server_idx = 0
+        self.default_nick = self.servers[0].get("nick", "cord_user")
         self.audio_config = self.config.get("audio", {"enabled": True, "volume": 0.5})
         self.current_volume = self.audio_config.get("volume", 0.5)
         self.audio_enabled = self.audio_config.get("enabled", True)
-        self.current_nick = self.default_nick  # Track nickname separately
-        self.selected_row = 0  # 0=nick, 1=audio, 2=volume
+        self.current_nick = self.default_nick
+        self.current_server = self.servers[0].get("host", "irc.libera.chat")  # Custom server input
+        self.using_custom_server = False  # Track if user typed a custom server
+        self.selected_row = 0  # 0=server, 1=nick, 2=audio, 3=volume
+        self.total_rows = 4
+        self.nick_error = ""  # Validation error message
 
-    def _render_volume_bar(self) -> str:
+    def _validate_nickname(self, nick: str) -> str:
+        """Validate IRC nickname. Returns error message or empty string if valid."""
+        import re
+        if not nick:
+            return "Nickname required"
+        if len(nick) > 30:
+            return "Max 30 characters"
+        if nick[0].isdigit() or nick[0] == '-':
+            return "Cannot start with digit or -"
+        # IRC valid chars: letters, digits, and special: [ ] \ ^ _ { } |
+        if not re.match(r'^[A-Za-z\[\]\\^_{}|][A-Za-z0-9\[\]\\^_{}|\-]*$', nick):
+            return "Invalid characters"
+        return ""
+
+    def _render_volume_bar(self, disabled: bool = False) -> str:
         """Render ASCII volume bar."""
+        if disabled:
+            return "[──────────] ---% ".ljust(18)
         filled = int(self.current_volume * 10)
         bar = "█" * filled + "░" * (10 - filled)
-        return f"[{bar}] {int(self.current_volume * 100):3d}%"
+        return f"[{bar}] {int(self.current_volume * 100):3d}%".ljust(18)
 
     def _render_audio_toggle(self) -> str:
         """Render ASCII audio toggle."""
@@ -68,37 +90,79 @@ class HomeScreen(Screen):
     def _render_screen(self) -> str:
         """Render the entire retro screen."""
         # Selection indicators
-        sel = lambda i: "[cyan]>[/]" if self.selected_row == i else " "
+        sel = lambda i: ">" if self.selected_row == i else " "
+        
+        # Box width (internal content width, excluding borders)
+        BOX_WIDTH = 47
+        
+        def format_row(selector, label, value, value_width, disabled=False):
+            """Format a row with proper alignment inside the box."""
+            prefix = f"  {selector} {label}:     "
+            value_str = str(value).ljust(value_width)
+            content_len = len(prefix) + len(value_str)
+            padding = BOX_WIDTH - content_len
+            spacer = " " * max(0, padding)
+            sel_colored = f"[cyan]{selector}[/]" if selector == ">" else " "
+            value_color = "[dim]" if disabled else "[cyan]"
+            return f"[green]│[/]  {sel_colored} [white]{label}:[/]     {value_color}{value_str}[/]{spacer}[green]│[/]"
+        
+        # Server display - show custom server or preset with arrows
+        if self.using_custom_server:
+            server_display = self.current_server[:20].ljust(20)
+        else:
+            current_server = self.servers[self.selected_server_idx]
+            server_name = current_server.get("name", current_server.get("host", "Unknown"))
+            if len(self.servers) > 1:
+                server_display = f"< {server_name[:16].ljust(16)} >"
+            else:
+                server_display = server_name[:20].ljust(20)
+        
+        # Pad values to fixed width
+        nick_display = self.current_nick[:20].ljust(20)
+        audio_display = "< ON  >" if self.audio_enabled else "< OFF >"
+        vol_bar = self._render_volume_bar(disabled=not self.audio_enabled)
+        
+        # Empty row helper
+        empty_row = f"[green]│[/]{' ' * BOX_WIDTH}[green]│[/]"
+        
+        # Error message line
+        error_line = f"[red]{self.nick_error.center(47)}[/]" if self.nick_error else " " * 47
         
         lines = [
             "",
             LOGO,
-            "[yellow]═══════════════════════════════════════════════════════════════[/]",
-            "[cyan]          Discord UX + IRC Protocol = Terminal Magic[/]",
-            "[yellow]═══════════════════════════════════════════════════════════════[/]",
+            "[yellow]════════════════════════════════════════════════════[/]",
+            "[cyan]     Discord UX + IRC Protocol = Terminal Magic[/]",
+            "[yellow]════════════════════════════════════════════════════[/]",
             "",
-            "[green]┌─────────────────── CONFIGURATION ───────────────────┐[/]",
-            "[green]│[/]                                                     [green]│[/]",
-            f"[green]│[/] {sel(0)} [white]NICKNAME:[/]  [cyan]{self.current_nick:<38}[/] [green]│[/]",
-            "[green]│[/]                                                     [green]│[/]",
-            f"[green]│[/] {sel(1)} [white]AUDIO:[/]     {self._render_audio_toggle()}                      [green]│[/]",
-            "[green]│[/]                                                     [green]│[/]",
-            f"[green]│[/] {sel(2)} [white]VOLUME:[/]    {self._render_volume_bar()}                  [green]│[/]",
-            "[green]│[/]                                                     [green]│[/]",
-            "[green]└─────────────────────────────────────────────────────┘[/]",
-            "",
-            "[yellow]───────────────────────────────────────────────────────────────[/]",
-            "  [green]↑↓[/] Navigate   [green]←→[/] Adjust Volume   [green]TAB[/] Toggle Audio",
-            "                    [green]ENTER[/] Connect",
-            "[yellow]───────────────────────────────────────────────────────────────[/]",
+            "[green]┌──────────────── CONFIGURATION ────────────────┐[/]",
+            empty_row,
+            format_row(sel(0), "SERVER  ", server_display, 20),
+            empty_row,
+            format_row(sel(1), "NICKNAME", nick_display, 20),
+            empty_row,
+            format_row(sel(2), "AUDIO   ", audio_display, 7),
+            empty_row,
+            format_row(sel(3), "VOLUME  ", vol_bar, 18, disabled=not self.audio_enabled),
+            empty_row,
+            "[green]└───────────────────────────────────────────────┘[/]",
+            error_line,
+            "[yellow]────────────────────────────────────────────────────[/]",
+            "  [green]↑↓[/] Navigate   [green]←→[/] Adjust   [green]ENTER[/] Connect",
+            "[yellow]────────────────────────────────────────────────────[/]",
         ]
         return "\n".join(lines)
 
     def compose(self) -> ComposeResult:
         """Compose the home screen."""
+        # Input value depends on selected row (0=server, 1=nick)
+        initial_value = self.current_server if self.selected_row == 0 else self.current_nick
         yield Container(
             Static(self._render_screen(), id="retro-display"),
-            Input(value=self.default_nick, id="nick-input", classes="hidden-input"),
+            Container(
+                Input(value=initial_value, id="nick-input"),
+                id="nick-container"
+            ),
             id="home-container"
         )
 
@@ -112,55 +176,92 @@ class HomeScreen(Screen):
         display.update(self._render_screen())
 
     def on_input_changed(self, event: Input.Changed):
-        """Update display when nickname changes."""
-        self.current_nick = event.value or self.default_nick
+        """Update display when input changes (server or nickname)."""
+        if self.selected_row == 0:  # Server row
+            self.current_server = event.value or self.servers[0].get("host", "irc.libera.chat")
+            self.using_custom_server = bool(event.value and event.value != self.servers[self.selected_server_idx].get("host", ""))
+            self.nick_error = ""  # Clear error when editing server
+        else:  # Nickname row
+            self.current_nick = event.value or self.default_nick
+            # Validate nickname as user types
+            self.nick_error = self._validate_nickname(self.current_nick)
         self._update_display()
 
     def on_input_submitted(self, event: Input.Submitted):
         """Handle Enter in input."""
         self._confirm_settings()
 
+    def _sync_input_to_row(self):
+        """Update input field value to match the currently selected row."""
+        nick_input = self.query_one("#nick-input", Input)
+        if self.selected_row == 0:
+            nick_input.value = self.current_server
+        elif self.selected_row == 1:
+            nick_input.value = self.current_nick
+        # For rows 2 and 3 (audio/volume), input isn't used
+
     def action_nav_up(self):
         """Navigate up."""
         nick_input = self.query_one("#nick-input", Input)
+        # Save current input value before navigating
+        if self.selected_row == 0:
+            self.current_server = nick_input.value or self.servers[0].get("host", "irc.libera.chat")
+            self.using_custom_server = bool(nick_input.value and nick_input.value != self.servers[self.selected_server_idx].get("host", ""))
+        elif self.selected_row == 1:
+            self.current_nick = nick_input.value or self.default_nick
         if nick_input.has_focus:
-            return  # Don't navigate while typing
-        self.selected_row = (self.selected_row - 1) % 3
+            nick_input.blur()
+        self.selected_row = (self.selected_row - 1) % self.total_rows
+        self._sync_input_to_row()
         self._update_display()
 
     def action_nav_down(self):
         """Navigate down."""
         nick_input = self.query_one("#nick-input", Input)
-        if nick_input.has_focus:
-            return
-        self.selected_row = (self.selected_row + 1) % 3
-        self._update_display()
-
-    def action_vol_down(self):
-        """Decrease volume."""
-        nick_input = self.query_one("#nick-input", Input)
-        if nick_input.has_focus:
-            return
-        if self.selected_row == 2:
-            self.current_volume = max(0.0, self.current_volume - 0.1)
-            self._update_display()
-
-    def action_vol_up(self):
-        """Increase volume."""
-        nick_input = self.query_one("#nick-input", Input)
-        if nick_input.has_focus:
-            return
-        if self.selected_row == 2:
-            self.current_volume = min(1.0, self.current_volume + 0.1)
-            self._update_display()
-
-    def action_toggle_audio(self):
-        """Toggle audio on/off."""
-        nick_input = self.query_one("#nick-input", Input)
+        # Save current input value before navigating
+        if self.selected_row == 0:
+            self.current_server = nick_input.value or self.servers[0].get("host", "irc.libera.chat")
+            self.using_custom_server = bool(nick_input.value and nick_input.value != self.servers[self.selected_server_idx].get("host", ""))
+        elif self.selected_row == 1:
+            self.current_nick = nick_input.value or self.default_nick
         if nick_input.has_focus:
             nick_input.blur()
-            return
-        self.audio_enabled = not self.audio_enabled
+        self.selected_row = (self.selected_row + 1) % self.total_rows
+        self._sync_input_to_row()
+        self._update_display()
+
+    def action_adjust_left(self):
+        """Handle left arrow - adjust current selection."""
+        nick_input = self.query_one("#nick-input", Input)
+        if nick_input.has_focus:
+            return  # Let input handle cursor
+        
+        if self.selected_row == 0 and not self.using_custom_server:  # Server (only cycle if not custom)
+            self.selected_server_idx = (self.selected_server_idx - 1) % len(self.servers)
+            # Update server and nick to match
+            self.current_server = self.servers[self.selected_server_idx].get("host", "irc.libera.chat")
+            self.current_nick = self.servers[self.selected_server_idx].get("nick", "cord_user")
+        elif self.selected_row == 2:  # Audio toggle
+            self.audio_enabled = not self.audio_enabled
+        elif self.selected_row == 3 and self.audio_enabled:  # Volume (only if audio on)
+            self.current_volume = max(0.0, self.current_volume - 0.1)
+        self._update_display()
+
+    def action_adjust_right(self):
+        """Handle right arrow - adjust current selection."""
+        nick_input = self.query_one("#nick-input", Input)
+        if nick_input.has_focus:
+            return  # Let input handle cursor
+        
+        if self.selected_row == 0 and not self.using_custom_server:  # Server (only cycle if not custom)
+            self.selected_server_idx = (self.selected_server_idx + 1) % len(self.servers)
+            # Update server and nick to match
+            self.current_server = self.servers[self.selected_server_idx].get("host", "irc.libera.chat")
+            self.current_nick = self.servers[self.selected_server_idx].get("nick", "cord_user")
+        elif self.selected_row == 2:  # Audio toggle
+            self.audio_enabled = not self.audio_enabled
+        elif self.selected_row == 3 and self.audio_enabled:  # Volume (only if audio on)
+            self.current_volume = min(1.0, self.current_volume + 0.1)
         self._update_display()
 
     def action_confirm(self):
@@ -168,16 +269,58 @@ class HomeScreen(Screen):
         self._confirm_settings()
 
     def on_key(self, event):
-        """Handle key presses for nickname editing."""
-        if self.selected_row == 0 and event.key not in ("up", "down", "tab", "enter"):
+        """Handle key presses for server/nickname editing."""
+        # Allow typing on server row (0) or nickname row (1)
+        if self.selected_row in (0, 1) and event.key not in ("up", "down", "enter", "escape"):
+            # For server row, also allow left/right if using custom server (for cursor movement)
+            if self.selected_row == 0 and event.key in ("left", "right") and not self.using_custom_server:
+                return  # Let adjust_left/right handle preset cycling
             nick_input = self.query_one("#nick-input", Input)
             if not nick_input.has_focus:
+                # Set input value based on which row we're on
+                if self.selected_row == 0:
+                    nick_input.value = self.current_server
+                else:
+                    nick_input.value = self.current_nick
                 nick_input.focus()
 
     def _confirm_settings(self):
         """Confirm settings and proceed."""
         nick = self.current_nick.strip() or self.default_nick
-        self.post_message(self.SettingsConfirmed(nick, self.audio_enabled, self.current_volume))
+        
+        # Validate nickname before proceeding
+        self.nick_error = self._validate_nickname(nick)
+        if self.nick_error:
+            self._update_display()
+            return  # Don't proceed with invalid nickname
+        
+        # Build server config - use custom or preset
+        if self.using_custom_server:
+            # Parse custom server (format: host or host:port)
+            server_str = self.current_server.strip()
+            if ":" in server_str:
+                host, port_str = server_str.rsplit(":", 1)
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    port = 6667
+            else:
+                host = server_str
+                port = 6667
+            
+            server = {
+                "name": host,
+                "host": host,
+                "port": port,
+                "ssl": port == 6697,  # Common SSL port
+                "nick": nick,
+                "channels": []
+            }
+        else:
+            server = self.servers[self.selected_server_idx].copy()
+            server["nick"] = nick  # Use the entered nick
+        
+        self.post_message(self.SettingsConfirmed(nick, self.audio_enabled, self.current_volume, server))
 
 
 class TeletextScreen(Screen):
