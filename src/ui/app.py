@@ -43,10 +43,17 @@ class CordTUI(App):
     
     BINDINGS = [
         Binding("f1", "toggle_teletext", "Teletext", show=True),
-        Binding("ctrl+j", "search_channels", "Join Channel", show=True),
+        Binding("ctrl+j", "search_channels", "Join", show=True),
         Binding("ctrl+b", "toggle_bookmark", "Bookmark", show=True),
+        Binding("left", "focus_prev_section", "Left", show=False),
+        Binding("right", "focus_next_section", "Right", show=False),
+        Binding("slash", "focus_input", "Focus", show=False),
+        Binding("ctrl+slash", "blur_input", "Blur", show=False),
         Binding("ctrl+c", "quit", "Quit", show=True),
     ]
+    
+    # Track which section is focused: 0=sidebar, 1=chat, 2=members
+    focused_section = 0
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -162,6 +169,10 @@ class CordTUI(App):
         self.input_bar = self.query_one("#input-bar", Input)
         self.member_list = self.query_one("#member-list", MemberList)
         
+        # Set current nick for "you" highlighting
+        self.chat_pane.current_nick = self.irc.nick
+        self.member_list.set_current_nick(self.irc.nick)
+        
         # Update sidebar with selected server's channels and bookmarks
         sidebar = self.query_one("#sidebar", Sidebar)
         server_channels = self.selected_server.get("channels", [])
@@ -228,7 +239,7 @@ class CordTUI(App):
                 
                 # Mark as joined (we'll get confirmation via IRC events)
                 self.channels_joined.add(channel)
-                self.chat_pane.add_message("System", f"Joined {channel}", is_system=True)
+                self.chat_pane.add_message("System", f"Joined [cyan]{channel}[/]", is_system=True)
             
             self.chat_pane.add_message("System", "Ready to chat! Select a channel and start messaging.", is_system=True)
             
@@ -295,7 +306,7 @@ class CordTUI(App):
         
         # Switch chat pane to show this channel's messages
         self.chat_pane.switch_channel(self.current_channel)
-        self.chat_pane.add_message("System", f"Switched to {self.current_channel}", is_system=True)
+        self.chat_pane.add_message("System", f"Switched to [cyan]{self.current_channel}[/]", is_system=True)
         
         # Update member list for new channel
         members = self.irc.get_channel_members(self.current_channel)
@@ -339,8 +350,8 @@ class CordTUI(App):
             # Send to IRC
             try:
                 self.irc.send_message(self.current_channel, message)
-                # Add to current channel's history
-                self.chat_pane.add_message("You", message, False, self.current_channel)
+                # Add to current channel's history using actual nick for consistent coloring
+                self.chat_pane.add_message(self.irc.nick, message, False, self.current_channel)
             except Exception as e:
                 self.chat_pane.add_message("System", f"Failed to send: {e}", is_system=True)
     
@@ -405,8 +416,8 @@ class CordTUI(App):
                         if line.strip():  # Skip empty lines
                             try:
                                 self.irc.send_message(self.current_channel, line)
-                                # Also show in local chat pane
-                                self.chat_pane.add_message("You (AI)", line, False, self.current_channel)
+                                # Also show in local chat pane using actual nick
+                                self.chat_pane.add_message(self.irc.nick, line, False, self.current_channel)
                             except Exception as e:
                                 self.chat_pane.add_message("System", f"Failed to send to IRC: {e}", is_system=True)
                                 break
@@ -428,9 +439,6 @@ class CordTUI(App):
                 sidebar = self.query_one("#sidebar", Sidebar)
                 if channel not in sidebar.channels:
                     sidebar.channels.append(channel)
-                    # Refresh sidebar display
-                    tree = sidebar.query_one(Tree)
-                    tree.root.add_leaf(f"# {channel}", data=channel)
                 
                 # Join the channel
                 self.irc.join_channel(channel)
@@ -439,11 +447,12 @@ class CordTUI(App):
                 # Switch to the new channel
                 self.current_channel = channel
                 self.chat_pane.switch_channel(self.current_channel)
-                self.chat_pane.add_message("System", f"Joined {channel}", is_system=True)
+                self.chat_pane.add_message("System", f"Joined [cyan]{channel}[/]", is_system=True)
                 
-                # Update UI
+                # Update UI and focus the channel in sidebar
                 self.input_bar.placeholder = f"Message {self.current_channel}"
                 self.member_list.show_loading(channel)
+                sidebar._refresh_tree(select_channel=channel)
         
         elif cmd == "bookmark":
             # Bookmark current or specified channel
@@ -491,6 +500,57 @@ class CordTUI(App):
     def action_toggle_teletext(self):
         """Toggle the Teletext dashboard."""
         self.push_screen(TeletextScreen(app_ref=self))
+    
+    def action_focus_prev_section(self):
+        """Focus the previous section (left arrow)."""
+        # Don't navigate if input has focus and has content
+        if self.input_bar and self.input_bar.has_focus and self.input_bar.value:
+            return
+        
+        self.focused_section = (self.focused_section - 1) % 3
+        self._focus_current_section()
+    
+    def action_focus_next_section(self):
+        """Focus the next section (right arrow)."""
+        # Don't navigate if input has focus and has content
+        if self.input_bar and self.input_bar.has_focus and self.input_bar.value:
+            return
+        
+        self.focused_section = (self.focused_section + 1) % 3
+        self._focus_current_section()
+    
+    def action_focus_input(self):
+        """Focus the input bar (/ key)."""
+        if self.input_bar:
+            self.input_bar.focus()
+            self.focused_section = 1  # Chat section
+    
+    def action_blur_input(self):
+        """Blur/defocus the input bar (ctrl+/ key)."""
+        if self.input_bar and self.input_bar.has_focus:
+            self.input_bar.blur()
+            # Focus the chat pane instead
+            if self.chat_pane:
+                self.chat_pane.focus()
+    
+    def _focus_current_section(self):
+        """Focus the widget in the current section."""
+        try:
+            if self.focused_section == 0:
+                # Focus sidebar (channel tree)
+                sidebar = self.query_one("#sidebar", Sidebar)
+                tree = sidebar.query_one(Tree)
+                tree.focus()
+            elif self.focused_section == 1:
+                # Focus chat pane
+                if self.chat_pane:
+                    self.chat_pane.focus()
+            elif self.focused_section == 2:
+                # Focus member list
+                if self.member_list:
+                    self.member_list.focus()
+        except Exception:
+            pass  # Ignore if widgets not yet mounted
     
     def action_search_channels(self):
         """Open channel search dialog."""
@@ -543,23 +603,21 @@ class CordTUI(App):
     def on_channel_search_screen_channel_selected(self, event: ChannelSearchScreen.ChannelSelected):
         """Handle channel selection from search dialog."""
         channel = event.channel
+        sidebar = self.query_one("#sidebar", Sidebar)
         
         # Check if already joined
         if channel in self.channels_joined:
             # Just switch to the channel
             self.current_channel = channel
             self.chat_pane.switch_channel(self.current_channel)
-            self.chat_pane.add_message("System", f"Switched to {channel}", is_system=True)
+            self.chat_pane.add_message("System", f"Switched to [cyan]{channel}[/]", is_system=True)
             self.input_bar.placeholder = f"Message {self.current_channel}"
+            sidebar.select_channel(channel)
             return
         
         # Add to sidebar if not already there
-        sidebar = self.query_one("#sidebar", Sidebar)
         if channel not in sidebar.channels:
             sidebar.channels.append(channel)
-            # Refresh sidebar display
-            tree = sidebar.query_one(Tree)
-            tree.root.add_leaf(f"# {channel}", data=channel)
         
         # Join the channel
         self.irc.join_channel(channel)
@@ -572,11 +630,12 @@ class CordTUI(App):
         # Switch to the new channel
         self.current_channel = channel
         self.chat_pane.switch_channel(self.current_channel)
-        self.chat_pane.add_message("System", f"Joined {channel}", is_system=True)
+        self.chat_pane.add_message("System", f"Joined [cyan]{channel}[/]", is_system=True)
         
-        # Update UI
+        # Update UI and focus the channel in sidebar
         self.input_bar.placeholder = f"Message {self.current_channel}"
         self.member_list.show_loading(channel)
+        sidebar._refresh_tree(select_channel=channel)
     
     async def on_unmount(self):
         """Clean up on exit."""

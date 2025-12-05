@@ -5,6 +5,8 @@ from textual.containers import Container, Vertical
 from textual.widgets import Static, Tree
 from textual.message import Message
 
+from src.ui.widgets.user_colors import format_username_colored
+
 
 class Sidebar(Container):
     """Left sidebar with channel list."""
@@ -64,7 +66,7 @@ class Sidebar(Container):
             self.bookmarked_channels.remove(channel)
             self._refresh_tree()
     
-    def _refresh_tree(self):
+    def _refresh_tree(self, select_channel: str = None):
         """Refresh the channel tree display."""
         tree = self.query_one(Tree)
         tree.root.remove_children()
@@ -78,20 +80,46 @@ class Sidebar(Container):
         for channel in self.channels:
             if channel not in self.bookmarked_channels:
                 tree.root.add_leaf(channel, data=channel)
+        
+        # Select the specified channel or active channel after refresh
+        channel_to_select = select_channel or self.active_channel
+        if channel_to_select:
+            self._select_node_by_channel(tree, channel_to_select)
+    
+    def _select_node_by_channel(self, tree: Tree, channel: str):
+        """Find and select a channel node in the tree."""
+        for idx, node in enumerate(tree.root.children):
+            if node.data == channel:
+                # Line 0 is root "Channels", children start at line 1
+                tree.cursor_line = idx + 1
+                break
+    
+    def select_channel(self, channel: str):
+        """Select and focus a channel in the tree."""
+        self.active_channel = channel
+        tree = self.query_one(Tree)
+        self._select_node_by_channel(tree, channel)
 
 
 class MemberList(Container):
     """Right sidebar with member list."""
     
+    can_focus = True
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.members = []
+        self.current_nick = None  # The current user's IRC nick
     
     def compose(self) -> ComposeResult:
         """Compose the member list."""
         with Vertical():
             yield Static("Members (0)", id="member-count")
             yield Static("", id="member-names")
+    
+    def set_current_nick(self, nick: str):
+        """Set the current user's nick for highlighting."""
+        self.current_nick = nick
     
     def update_members(self, members: list[str]):
         """Update the member list with current channel members."""
@@ -100,8 +128,16 @@ class MemberList(Container):
         # Update count header
         self.query_one("#member-count", Static).update(f"Members ({len(self.members)})")
         
-        # Update names list
-        names_text = "\n".join(f"• {m}" for m in self.members)
+        # Update names list with colored usernames
+        lines = []
+        for m in self.members:
+            # Strip IRC prefixes for comparison
+            clean_name = m.lstrip("@+%~&")
+            if self.current_nick and clean_name == self.current_nick:
+                lines.append(f"• {format_username_colored(m)} (you)")
+            else:
+                lines.append(f"• {format_username_colored(m)}")
+        names_text = "\n".join(lines)
         self.query_one("#member-names", Static).update(names_text)
     
     def show_loading(self, channel: str):

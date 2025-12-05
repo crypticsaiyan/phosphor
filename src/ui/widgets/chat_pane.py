@@ -1,22 +1,28 @@
 """Chat pane widget - the center message stream."""
 
-from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static, Markdown
-from textual.reactive import reactive
+
+from src.ui.widgets.user_colors import format_username_colored
 
 
 class ChatPane(VerticalScroll):
     """The main chat message stream."""
+    
+    can_focus = True
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Store messages per channel: {channel: [(author, content, is_system), ...]}
         self.channel_messages = {}
         self.current_channel = None
+        self.current_nick = None  # The current user's IRC nick
     
     def add_message(self, author: str, content: str, is_system: bool = False, channel: str = None):
         """Add a message to the chat."""
+        # Strip leading colon from content if present (IRC protocol artifact)
+        content = content.lstrip(": ")
+        
         # Store message in history
         if channel:
             if channel not in self.channel_messages:
@@ -28,8 +34,13 @@ class ChatPane(VerticalScroll):
             if is_system:
                 msg_widget = Static(f"[italic yellow]⚙ {content}[/]", classes="system-message")
             else:
-                msg_widget = Markdown(f"**{author}**: {content}")
-                msg_widget.add_class("message")
+                # Use colored username with Rich markup
+                colored_author = format_username_colored(author)
+                # Add (you) indicator if this is the current user
+                if self.current_nick and author == self.current_nick:
+                    msg_widget = Static(f"{colored_author} (you): {content}", classes="message")
+                else:
+                    msg_widget = Static(f"{colored_author}: {content}", classes="message")
             
             self.mount(msg_widget)
             self.scroll_end(animate=False)
@@ -47,8 +58,13 @@ class ChatPane(VerticalScroll):
                 if is_system:
                     msg_widget = Static(f"[italic yellow]⚙ {content}[/]", classes="system-message")
                 else:
-                    msg_widget = Markdown(f"**{author}**: {content}")
-                    msg_widget.add_class("message")
+                    # Use colored username with Rich markup
+                    colored_author = format_username_colored(author)
+                    # Add (you) indicator if this is the current user
+                    if self.current_nick and author == self.current_nick:
+                        msg_widget = Static(f"{colored_author} (you): {content}", classes="message")
+                    else:
+                        msg_widget = Static(f"{colored_author}: {content}", classes="message")
                 self.mount(msg_widget)
         
         self.scroll_end(animate=False)

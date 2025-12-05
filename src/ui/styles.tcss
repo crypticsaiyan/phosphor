@@ -7,7 +7,19 @@ Screen {
 #sidebar {
     width: 20;
     background: #2f3136;
-    border-right: solid #202225;
+    border: solid #202225;
+}
+
+#sidebar:focus-within {
+    border: solid #5865F2;
+}
+
+#chat-container {
+    border: solid #202225;
+}
+
+#chat-container:focus-within {
+    border: solid #5865F2;
 }
 
 #chat-pane {
@@ -17,14 +29,18 @@ Screen {
 #member-list {
     width: 20;
     background: #2f3136;
-    border-left: solid #202225;
+    border: solid #202225;
+}
+
+#member-list:focus-within {
+    border: solid #5865F2;
 }
 
 #input-bar {
     dock: bottom;
     height: 3;
     background: #40444b;
-    border-top: solid #202225;
+    border: solid #202225;
 }
 
 Input {
@@ -33,7 +49,7 @@ Input {
     border: none;
 }
 
-Input:focus {
+#input-bar:focus {
     border: solid #5865F2;
 }
 
@@ -67,7 +83,6 @@ Input:focus {
 
 .message {
     padding: 0 1;
-    color: #dcddde;
 }
 
 .message-author {
