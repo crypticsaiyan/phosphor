@@ -324,9 +324,23 @@ class CordTUI(App):
             self.call_from_thread(self._handle_dm_received, nick, message)
         else:
             # Regular channel message
-            self.call_from_thread(self.chat_pane.add_message, nick, message, False, target)
+            self.call_from_thread(self._handle_channel_message, nick, target, message)
         
         self.audio.process_log(message)
+    
+    def _handle_channel_message(self, nick: str, channel: str, message: str):
+        """Handle received channel message - called from main thread."""
+        # Add message to chat pane
+        self.chat_pane.add_message(nick, message, False, channel)
+        
+        # Play retro notification sound for new messages (not from self)
+        if self.audio and nick != self.irc.get_confirmed_nick():
+            self.audio.play_notification()
+        
+        # If not currently viewing this channel, increment unread count
+        if channel != self.current_channel:
+            sidebar = self.query_one("#sidebar", Sidebar)
+            sidebar.increment_channel_unread(channel)
     
     def _handle_dm_received(self, from_nick: str, message: str):
         """Handle received DM - called from main thread."""
@@ -334,6 +348,10 @@ class CordTUI(App):
         
         # Add to DM messages
         self.chat_pane.add_message(from_nick, message, False, dm_nick=from_nick)
+        
+        # Play distinct retro DM notification sound
+        if self.audio:
+            self.audio.play_dm_notification()
         
         # If not currently viewing this DM, show notification and increment unread
         if self.current_dm != from_nick:

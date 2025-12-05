@@ -33,6 +33,7 @@ class Sidebar(Container):
         self.active_dm = None  # Currently selected DM
         self.dm_conversations = []  # List of nicks with active DM conversations
         self.dm_unread = {}  # Track unread DMs: {nick: count}
+        self.channel_unread = {}  # Track unread channel messages: {channel: count}
     
     def compose(self) -> ComposeResult:
         """Compose the sidebar."""
@@ -56,12 +57,16 @@ class Sidebar(Container):
             # Add bookmarked channels first with a star
             if self.bookmarked_channels:
                 for channel in self.bookmarked_channels:
-                    channels_node.add_leaf(f"⭐ {channel}", data=channel)
+                    unread = self.channel_unread.get(channel, 0)
+                    label = f"⭐ {channel}" + (f" ({unread})" if unread > 0 else "")
+                    channels_node.add_leaf(label, data=channel)
             
             # Add regular channels
             for channel in self.channels:
                 if channel not in self.bookmarked_channels:
-                    channels_node.add_leaf(f"  {channel}", data=channel)
+                    unread = self.channel_unread.get(channel, 0)
+                    label = f"  {channel}" + (f" ({unread})" if unread > 0 else "")
+                    channels_node.add_leaf(label, data=channel)
             
             yield tree
     
@@ -85,6 +90,9 @@ class Sidebar(Container):
                 # Handle channel selection
                 self.active_channel = data
                 self.active_dm = None
+                # Clear unread count for channel
+                self.channel_unread[data] = 0
+                self._refresh_tree(select_channel=data)
                 self.post_message(self.ChannelSelected(data))
     
     def update_channels(self, channels: list[str]):
@@ -141,7 +149,9 @@ class Sidebar(Container):
         
         # Add bookmarked channels first with a star
         for channel in self.bookmarked_channels:
-            channels_node.add_leaf(f"⭐ {channel}", data=channel)
+            unread = self.channel_unread.get(channel, 0)
+            label = f"⭐ {channel}" + (f" ({unread})" if unread > 0 else "")
+            channels_node.add_leaf(label, data=channel)
             if channel == target_channel:
                 target_line = line_index
                 self.active_channel = channel
@@ -150,7 +160,9 @@ class Sidebar(Container):
         # Add regular channels (not bookmarked)
         for channel in self.channels:
             if channel not in self.bookmarked_channels:
-                channels_node.add_leaf(f"  {channel}", data=channel)
+                unread = self.channel_unread.get(channel, 0)
+                label = f"  {channel}" + (f" ({unread})" if unread > 0 else "")
+                channels_node.add_leaf(label, data=channel)
                 if channel == target_channel:
                     target_line = line_index
                     self.active_channel = channel
@@ -217,6 +229,16 @@ class Sidebar(Container):
         self.active_channel = None
         self.dm_unread[nick] = 0
         self._refresh_tree(select_dm=nick)
+    
+    def increment_channel_unread(self, channel: str):
+        """Increment unread count for a channel."""
+        self.channel_unread[channel] = self.channel_unread.get(channel, 0) + 1
+        self._refresh_tree()
+    
+    def clear_channel_unread(self, channel: str):
+        """Clear unread count for a channel."""
+        self.channel_unread[channel] = 0
+        self._refresh_tree()
 
 
 class MemberList(Container):
