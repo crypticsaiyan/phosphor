@@ -240,13 +240,16 @@ HomeScreen {
    CHANNEL SEARCH DIALOG
    ═══════════════════════════════════════════════════════════════════════════ */
 
+ChannelSearchScreen {
+    align: center middle;
+}
+
 #channel-search-dialog {
     width: 70;
     height: 35;
     background: #36393f;
     border: solid #5865F2;
     padding: 2;
-    margin: 2;
 }
 
 .dialog-title {

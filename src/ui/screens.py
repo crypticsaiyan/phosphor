@@ -4,6 +4,8 @@ import asyncio
 import time
 import os
 import subprocess
+import json
+from pathlib import Path
 from datetime import datetime, timedelta
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -20,6 +22,30 @@ LOGO = """[green]
 ╚██████╗╚██████╔╝██║  ██║██████╔╝         ██║   ╚██████╔╝██║
  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝          ╚═╝    ╚═════╝ ╚═╝[/]
 """
+
+
+def _load_last_nick() -> str:
+    """Load the last used nickname from settings."""
+    settings_path = Path(".cord/last_nick.json")
+    if settings_path.exists():
+        try:
+            with open(settings_path) as f:
+                data = json.load(f)
+                return data.get("nick", "cord_user")
+        except Exception:
+            pass
+    return "cord_user"
+
+
+def _save_last_nick(nick: str):
+    """Save the nickname for future use."""
+    settings_path = Path(".cord/last_nick.json")
+    settings_path.parent.mkdir(exist_ok=True)
+    try:
+        with open(settings_path, 'w') as f:
+            json.dump({"nick": nick}, f)
+    except Exception:
+        pass  # Fail silently if we can't save
 
 
 class HomeScreen(Screen):
@@ -47,7 +73,8 @@ class HomeScreen(Screen):
         self.config = config or {}
         self.servers = self.config.get("servers", [{"name": "Libera.Chat", "host": "irc.libera.chat", "port": 6667, "ssl": False, "nick": "cord_user", "channels": []}])
         self.selected_server_idx = 0
-        self.default_nick = self.servers[0].get("nick", "cord_user")
+        # Load last used nickname, or fall back to config/default
+        self.default_nick = _load_last_nick() or self.servers[0].get("nick", "cord_user")
         self.audio_config = self.config.get("audio", {"enabled": True, "volume": 0.5})
         self.current_volume = self.audio_config.get("volume", 0.5)
         self.audio_enabled = self.audio_config.get("enabled", True)
@@ -294,6 +321,9 @@ class HomeScreen(Screen):
             self._update_display()
             return  # Don't proceed with invalid nickname
         
+        # Save the nickname for future use
+        _save_last_nick(nick)
+        
         # Build server config - use custom or preset
         if self.using_custom_server:
             # Parse custom server (format: host or host:port)
@@ -404,6 +434,44 @@ class TeletextScreen(Screen):
             return process.memory_info().rss / (1024 * 1024)
         except ImportError:
             return 0.0
+    
+    def _get_system_stats(self) -> dict:
+        """Get real-time system statistics."""
+        stats = {
+            "cpu_percent": 0.0,
+            "memory_percent": 0.0,
+            "memory_used_gb": 0.0,
+            "memory_total_gb": 0.0,
+            "network_sent_mb": 0.0,
+            "network_recv_mb": 0.0,
+            "disk_usage_percent": 0.0,
+        }
+        
+        try:
+            import psutil
+            
+            # CPU usage
+            stats["cpu_percent"] = psutil.cpu_percent(interval=0)
+            
+            # Memory usage
+            mem = psutil.virtual_memory()
+            stats["memory_percent"] = mem.percent
+            stats["memory_used_gb"] = mem.used / (1024 ** 3)
+            stats["memory_total_gb"] = mem.total / (1024 ** 3)
+            
+            # Network I/O
+            net = psutil.net_io_counters()
+            stats["network_sent_mb"] = net.bytes_sent / (1024 ** 2)
+            stats["network_recv_mb"] = net.bytes_recv / (1024 ** 2)
+            
+            # Disk usage
+            disk = psutil.disk_usage('/')
+            stats["disk_usage_percent"] = disk.percent
+            
+        except ImportError:
+            pass
+        
+        return stats
 
     def _generate_dashboard(self) -> str:
         """Generate authentic Ceefax-style teletext dashboard."""
@@ -411,8 +479,9 @@ class TeletextScreen(Screen):
         self.blink_state = not self.blink_state
         
         data = self._get_dynamic_data()
+        stats = self._get_system_stats()
 
-        timestamp = datetime.now().strftime("%H:%M/%S")
+        timestamp = datetime.now().strftime("%H:%M:%S")
         day = datetime.now().strftime("%a")
         date = datetime.now().strftime("%d")
         month = datetime.now().strftime("%b")
@@ -438,16 +507,46 @@ class TeletextScreen(Screen):
         lines.append("[white on black]                                      [/][yellow on blue]           ╚═╝     ╚══════╝  [/]")
         lines.append("")
 
+        # System Performance section - left-aligned, labels above bars
+        lines.append(f"[yellow]SYSTEM PERFORMANCE[/]")
+        lines.append("")
+        
+        # CPU - label above, bar below, left-aligned
+        cpu_bar = self._render_bar(stats["cpu_percent"], 100, 50)
+        cpu_color = self._get_usage_color(stats["cpu_percent"])
+        lines.append(f"[white]CPU {stats['cpu_percent']:5.1f}%[/]")
+        lines.append(f"[{cpu_color}]{cpu_bar}[/]")
+        lines.append("")
+        
+        # Memory - label above, bar below, left-aligned
+        mem_bar = self._render_bar(stats["memory_percent"], 100, 50)
+        mem_color = self._get_usage_color(stats["memory_percent"])
+        lines.append(f"[white]Memory {stats['memory_percent']:5.1f}%[/] [cyan]({stats['memory_used_gb']:.1f}/{stats['memory_total_gb']:.1f}GB)[/]")
+        lines.append(f"[{mem_color}]{mem_bar}[/]")
+        lines.append("")
+        
+        # Disk - label above, bar below, left-aligned
+        disk_bar = self._render_bar(stats["disk_usage_percent"], 100, 50)
+        disk_color = self._get_usage_color(stats["disk_usage_percent"])
+        lines.append(f"[white]Disk {stats['disk_usage_percent']:5.1f}%[/]")
+        lines.append(f"[{disk_color}]{disk_bar}[/]")
+        lines.append("")
+        
+        # Network stats - left-aligned
+        lines.append(f"[white]Network[/]")
+        lines.append(f"[cyan]↑ TX {stats['network_sent_mb']:8.1f} MB  ↓ RX {stats['network_recv_mb']:8.1f} MB[/]")
+        lines.append("")
+
         # Connection status section
-        lines.append(f"[green]Status[/]")
+        lines.append(f"[green]IRC Connection[/]")
         lines.append(f"")
         
         if data["connected"]:
             status_icon = "[green]●[/]" if self.blink_state else "[green]○[/]"
-            lines.append(f"[yellow]CONNECTED TO IRC SERVER[/] {status_icon}")
+            lines.append(f"[yellow]CONNECTED TO SERVER[/] {status_icon}")
         else:
             status_icon = "[red]●[/]" if self.blink_state else "[red]○[/]"
-            lines.append(f"[yellow]DISCONNECTED FROM SERVER[/] {status_icon}")
+            lines.append(f"[yellow]DISCONNECTED[/] {status_icon}")
         lines.append(f"")
 
         lines.append(f"[white]Server:[/] [cyan]{data['server']}[/]")
@@ -455,25 +554,60 @@ class TeletextScreen(Screen):
         lines.append(f"[white]Uptime:[/] [cyan]{self._format_uptime(data['uptime'])}[/]")
         lines.append("")
 
-        # Channels section
-        lines.append(f"[green]Channels[/]")
+        # Channels section - simplified
+        lines.append(f"[yellow]CHANNELS[/]")
         if data["channels"]:
-            for i, channel in enumerate(data["channels"][:5]):
+            for channel in data["channels"][:5]:
                 marker = "[yellow]►[/]" if channel == data["current_channel"] else " "
-                lines.append(f" {marker} [white]{channel:<20}[/][cyan]{160 + i}[/]")
+                lines.append(f"{marker} [white]{channel}[/]")
         else:
-            lines.append("[white]  No channels joined[/]")
+            lines.append("[white]No channels joined[/]")
         lines.append("")
 
         # Scrolling ticker
-        ticker = self._generate_ticker(50)
+        ticker = self._generate_ticker(70)
         lines.append(f"[yellow on blue] ▶ {ticker} [/]")
         lines.append("")
 
-        # Footer with colored buttons
-        lines.append("[red]F1 Back[/]      [green]Channels[/]       [yellow]Transfer[/]        [cyan]A-Z Index[/]")
+        # Simple footer
+        lines.append("[cyan]Press F1 to return to chat[/]")
 
         return "\n".join(lines)
+    
+    def _render_bar(self, value: float, max_value: float, width: int = 20) -> str:
+        """Render a progress bar with smooth gradient."""
+        filled = (value / max_value) * width
+        full_blocks = int(filled)
+        partial = filled - full_blocks
+        
+        # Use block characters for smooth gradient
+        bar = "█" * full_blocks
+        
+        # Add partial block for smoother appearance
+        if full_blocks < width and partial > 0:
+            if partial > 0.75:
+                bar += "▓"
+            elif partial > 0.5:
+                bar += "▒"
+            elif partial > 0.25:
+                bar += "░"
+            else:
+                bar += "░"
+            empty_blocks = width - full_blocks - 1
+        else:
+            empty_blocks = width - full_blocks
+        
+        bar += "░" * empty_blocks
+        return f"[{bar}]"
+    
+    def _get_usage_color(self, percent: float) -> str:
+        """Get color based on usage percentage."""
+        if percent < 50:
+            return "green"
+        elif percent < 75:
+            return "yellow"
+        else:
+            return "red"
 
     async def _update_dashboard(self):
         """Periodically update the dashboard."""
