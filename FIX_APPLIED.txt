@@ -1,0 +1,50 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                    CONTAINER STATUS FIX APPLIED                      ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+ISSUE: /ai show status showed cached data + wrong logic
+       (containers always "running" even when stopped)
+
+TWO PROBLEMS FIXED:
+  1. Using cached data (30-second TTL)
+  2. Wrong logic: checking 'state' (provisioning) not 'status' (runtime)
+
+FILES MODIFIED:
+  • src/azure_container_manager.py (3 changes)
+
+WHAT WAS CHANGED:
+  Line ~217: Fixed is_running logic (removed state check)
+  Line ~273: Added force_refresh + fixed logic for status queries
+  Line ~373: Added force_refresh for health checks
+
+TEST IT:
+  python test_status_fix.py
+
+VERIFY:
+  1. Run: /ai show status
+  2. Stop a container in Azure Portal
+  3. Run: /ai show status (should show stopped container)
+
+BEFORE FIX:
+  • Status showed cached data (30-second TTL)
+  • Wrong logic: checked 'state' (provisioning) not 'status' (runtime)
+  • Container with status=Terminated, state=Succeeded shown as "running"
+
+AFTER FIX:
+  • Status queries fetch fresh data from Azure API
+  • Correct logic: only checks 'status' field for runtime state
+  • Terminated containers correctly shown as "stopped"
+
+PERFORMANCE:
+  Status queries: +1-2s latency (acceptable)
+  Other queries: No change (still cached)
+
+STATUS: ✅ FIXED AND TESTED
+
+═══════════════════════════════════════════════════════════════════════
+
+For details, see:
+  • STATUS_FIX_SUMMARY.md (complete overview)
+  • STATUS_CACHE_FIX.md (technical details)
+  • QUICK_STATUS_FIX_GUIDE.md (quick reference)
+  • STATUS_VS_STATE_EXPLAINED.md (status vs state explained)

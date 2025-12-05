@@ -213,8 +213,10 @@ class AzureContainerManager:
         summary_lines.append("")
         
         for c in containers:
-            # Consider both Running and Succeeded as healthy
-            is_running = c['status'] in ['Running', 'Succeeded'] or c['state'] == 'Succeeded'
+            # Check actual container runtime status (not provisioning state)
+            # Running/Succeeded = container is running
+            # Terminated/Waiting = container is stopped/starting
+            is_running = c['status'] in ['Running', 'Succeeded']
             status_emoji = "✅" if is_running else "⚠️"
             
             if detailed:
@@ -270,9 +272,15 @@ class AzureContainerManager:
         
         # Container status
         if 'status' in question_lower or 'state' in question_lower or 'running' in question_lower:
-            # Azure container states: Running, Terminated, Waiting, Succeeded
-            # Provisioning states: Succeeded, Failed, Pending
-            running = [c for c in containers if c['status'] in ['Running', 'Succeeded'] or c['state'] == 'Succeeded']
+            # Force refresh to get real-time status
+            containers = self.get_all_containers(force_refresh=True)
+            
+            # Azure container instance states (from instance_view.current_state.state):
+            # - Running: Container is actively running
+            # - Terminated: Container has stopped
+            # - Waiting: Container is waiting to start
+            # Note: 'state' is provisioning state (Succeeded/Failed/Pending), not runtime status
+            running = [c for c in containers if c['status'] in ['Running', 'Succeeded']]
             stopped = [c for c in containers if c not in running]
             
             result = [f"📊 Container Status Summary (from Azure API):"]
@@ -366,6 +374,9 @@ class AzureContainerManager:
         
         # Health check
         if 'health' in question_lower:
+            # Force refresh to get real-time status
+            containers = self.get_all_containers(force_refresh=True)
+            
             result = ["🏥 Container Health Check:"]
             result.append("")
             result.append("Note: Checking /health endpoint on each container...")
