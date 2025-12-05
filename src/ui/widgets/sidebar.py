@@ -69,36 +69,54 @@ class Sidebar(Container):
     def _refresh_tree(self, select_channel: str = None):
         """Refresh the channel tree display."""
         tree = self.query_one(Tree)
+        
+        # Store currently selected node data before refresh
+        selected_channel = None
+        if tree.cursor_node and tree.cursor_node.data:
+            selected_channel = tree.cursor_node.data
+        
+        # Clear and rebuild tree
         tree.root.remove_children()
+        
+        # Combine all channels (bookmarked and regular)
+        all_channels = []
         
         # Add bookmarked channels first with a star
         if self.bookmarked_channels:
             for channel in self.bookmarked_channels:
-                tree.root.add_leaf(f"⭐ {channel}", data=channel)
+                node = tree.root.add_leaf(f"⭐ {channel}", data=channel)
+                all_channels.append(channel)
+                # Re-select if this was the selected channel
+                if channel == selected_channel:
+                    tree.select_node(node)
         
         # Add regular channels
         for channel in self.channels:
             if channel not in self.bookmarked_channels:
-                tree.root.add_leaf(channel, data=channel)
-        
-        # Select the specified channel or active channel after refresh
-        channel_to_select = select_channel or self.active_channel
-        if channel_to_select:
-            self._select_node_by_channel(tree, channel_to_select)
+                node = tree.root.add_leaf(channel, data=channel)
+                all_channels.append(channel)
+                # Re-select if this was the selected channel
+                if channel == selected_channel:
+                    tree.select_node(node)
     
-    def _select_node_by_channel(self, tree: Tree, channel: str):
-        """Find and select a channel node in the tree."""
-        for idx, node in enumerate(tree.root.children):
-            if node.data == channel:
-                # Line 0 is root "Channels", children start at line 1
-                tree.cursor_line = idx + 1
-                break
+    def mark_channel_ready(self, channel: str):
+        """Mark a channel as ready (joined successfully)."""
+        # This is mainly for visual feedback - could add a checkmark or color
+        # For now, just ensure it's in the tree
+        pass
     
-    def select_channel(self, channel: str):
-        """Select and focus a channel in the tree."""
-        self.active_channel = channel
-        tree = self.query_one(Tree)
-        self._select_node_by_channel(tree, channel)
+    def toggle_bookmark(self, channel: str):
+        """Toggle bookmark status for a channel."""
+        if channel in self.bookmarked_channels:
+            self.remove_bookmark(channel)
+            return False  # Removed
+        else:
+            self.add_bookmark(channel)
+            return True  # Added
+    
+    def is_bookmarked(self, channel: str) -> bool:
+        """Check if a channel is bookmarked."""
+        return channel in self.bookmarked_channels
 
 
 class MemberList(Container):
