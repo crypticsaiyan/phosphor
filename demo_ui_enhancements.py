@@ -118,7 +118,7 @@ ChannelSearchScreen {
 def main():
     """Run all demos."""
     print("\n" + "=" * 70)
-    print("🎨 CORD-TUI UI ENHANCEMENTS DEMO")
+    print("🎨 phosphor UI ENHANCEMENTS DEMO")
     print("=" * 70)
     
     try:

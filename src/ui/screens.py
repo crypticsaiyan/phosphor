@@ -14,19 +14,19 @@ from textual.widgets import Static, Input, Button, Switch, Label
 from textual.message import Message
 
 
-LOGO = """[green]
- ██████╗ ██████╗ ██████╗ ██████╗       ████████╗██╗   ██╗██╗
-██╔════╝██╔═══██╗██╔══██╗██╔══██╗      ╚══██╔══╝██║   ██║██║
-██║     ██║   ██║██████╔╝██║  ██║█████╗   ██║   ██║   ██║██║
-██║     ██║   ██║██╔══██╗██║  ██║╚════╝   ██║   ██║   ██║██║
-╚██████╗╚██████╔╝██║  ██║██████╔╝         ██║   ╚██████╔╝██║
- ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝          ╚═╝    ╚═════╝ ╚═╝[/]
+LOGO = """
+[green]██████╗ ██╗  ██╗ ██████╗ ███████╗[/][cyan]██████╗ [/][green]██╗  ██╗ ██████╗ ██████╗ [/]
+[green]██╔══██╗██║  ██║██╔═══██╗██╔════╝[/][cyan]██╔══██╗[/][green]██║  ██║██╔═══██╗██╔══██╗[/]
+[green]██████╔╝███████║██║   ██║███████╗[/][cyan]██████╔╝[/][green]███████║██║   ██║██████╔╝[/]
+[green]██╔═══╝ ██╔══██║██║   ██║╚════██║[/][cyan]██╔═══╝ [/][green]██╔══██║██║   ██║██╔══██╗[/]
+[green]██║     ██║  ██║╚██████╔╝███████║[/][cyan]██║     [/][green]██║  ██║╚██████╔╝██║  ██║[/]
+[green]╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚══════╝[/][cyan]╚═╝     [/][green]╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
 """
 
 
 def _load_last_nick() -> str:
     """Load the last used nickname from settings."""
-    settings_path = Path(".cord/last_nick.json")
+    settings_path = Path(".phosphor/last_nick.json")
     if settings_path.exists():
         try:
             with open(settings_path) as f:
@@ -39,7 +39,7 @@ def _load_last_nick() -> str:
 
 def _save_last_nick(nick: str):
     """Save the nickname for future use."""
-    settings_path = Path(".cord/last_nick.json")
+    settings_path = Path(".phosphor/last_nick.json")
     settings_path.parent.mkdir(exist_ok=True)
     try:
         with open(settings_path, 'w') as f:
@@ -496,15 +496,14 @@ class TeletextScreen(Screen):
         lines.append(f"[white]{header}[/]")
         lines.append("")
 
-        # Logo banner
+        # Logo banner - phosphor with highlighted middle P
         lines.append("")
-        lines.append("[white on black] ██████╗  ██████╗  ██████╗  ██████╗   [/][yellow on blue]                             [/]")
-        lines.append("[white on black] ██╔════╝ ██╔═══██╗██╔══██╗██╔═══██╗  [/][yellow on blue]   ██████╗ ██████╗ ███████╗  [/]")
-        lines.append("[white on black] ██║      ██║   ██║██████╔╝██║   ██║  [/][yellow on blue]  ██╔═══██╗██╔══██╗██╔════╝  [/]")
-        lines.append("[white on black] ██║      ██║   ██║██╔══██╗██║   ██║  [/][yellow on blue]  ██║   ██║██████╔╝███████╗  [/]")
-        lines.append("[white on black] ╚██████╗ ╚██████╔╝██║  ██║╚██████╔╝  [/][yellow on blue]  ╚██████╔╝██╔═══╝ ╚════██║  [/]")
-        lines.append("[white on black]  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝   [/][yellow on blue]   ╚═════╝ ██║     ███████║  [/]")
-        lines.append("[white on black]                                      [/][yellow on blue]           ╚═╝     ╚══════╝  [/]")
+        lines.append("[green on black]██████╗ ██╗  ██╗ ██████╗ ███████╗[/][cyan on black]██████╗ [/][green on black]██╗  ██╗ ██████╗ ██████╗ [/]")
+        lines.append("[green on black]██╔══██╗██║  ██║██╔═══██╗██╔════╝[/][cyan on black]██╔══██╗[/][green on black]██║  ██║██╔═══██╗██╔══██╗[/]")
+        lines.append("[green on black]██████╔╝███████║██║   ██║███████╗[/][cyan on black]██████╔╝[/][green on black]███████║██║   ██║██████╔╝[/]")
+        lines.append("[green on black]██╔═══╝ ██╔══██║██║   ██║╚════██║[/][cyan on black]██╔═══╝ [/][green on black]██╔══██║██║   ██║██╔══██╗[/]")
+        lines.append("[green on black]██║     ██║  ██║╚██████╔╝███████║[/][cyan on black]██║     [/][green on black]██║  ██║╚██████╔╝██║  ██║[/]")
+        lines.append("[green on black]╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚══════╝[/][cyan on black]╚═╝     [/][green on black]╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]")
         lines.append("")
 
         # System Performance section - left-aligned, labels above bars

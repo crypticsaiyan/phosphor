@@ -1,4 +1,4 @@
-# Cord-TUI
+# phosphor
 
 > Discord UX + IRC Protocol = Terminal Magic
 
@@ -52,7 +52,7 @@ AI-powered commands via Model Context Protocol. Extensible tool system for autom
 
 ## 📊 Performance
 
-| Metric | Discord | Cord-TUI |
+| Metric | Discord | phosphor |
 |--------|---------|----------|
 | Memory | 2GB | 20MB |
 | Startup | 10s | <1s |
@@ -89,7 +89,7 @@ This project resurrects three "dead" technologies with modern improvements:
 
 ## 🤖 DevOps Health Bot
 
-Cord-TUI includes an AI-powered DevOps assistant that automatically monitors Docker container health:
+phosphor includes an AI-powered DevOps assistant that automatically monitors Docker container health:
 
 ```bash
 # In the TUI or via IRC:
@@ -132,16 +132,16 @@ The Teletext demo shows off the authentic 1980s dashboard. The error simulation 
 ## 📁 Project Structure
 
 ```
-cord-tui/
+phosphor/
 ├── src/
 │   ├── core/          # Backend (IRC, MCP, Wormhole, Audio)
 │   └── ui/            # Frontend (Textual TUI)
-├── .cord/             # Configuration
+├── .phosphor/         # Configuration
 ├── assets/            # Logo and demo files
 └── docs/              # 10+ comprehensive guides
 ```
 
-## 🏆 Why Cord-TUI?
+## 🏆 Why phosphor?
 
 - **Efficient**: 1/100th the memory of Discord
 - **Fast**: Sub-second startup, zero-latency UI

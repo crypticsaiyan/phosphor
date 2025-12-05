@@ -10,7 +10,8 @@
       "disabled": false,
       "autoApprove": [
         "read_file",
-        "list_directory"
+        "list_directory",
+        "move_file"
       ]
     }
   }

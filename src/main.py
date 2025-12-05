@@ -1,12 +1,12 @@
 """Application entry point."""
 
 import asyncio
-from src.ui.app import CordTUI
+from src.ui.app import Phosphor
 
 
 def main():
-    """Launch the Cord-TUI application."""
-    app = CordTUI()
+    """Launch the phosphor application."""
+    app = Phosphor()
     app.run()
 
 

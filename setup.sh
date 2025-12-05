@@ -1,7 +1,7 @@
 #!/bin/bash
-# Cord-TUI Setup Script with Azure Integration
+# phosphor Setup Script with Azure Integration
 
-echo "🚀 Setting up Cord-TUI with Azure Integration..."
+echo "🚀 Setting up phosphor with Azure Integration..."
 echo "=========================================="
 
 # Check Python version
@@ -118,7 +118,7 @@ echo "=========================================="
 echo "✅ Setup complete!"
 echo "=========================================="
 echo ""
-echo "To run Cord-TUI:"
+echo "To run phosphor:"
 echo "  source venv/bin/activate"
 echo "  python -m src.main"
 echo ""

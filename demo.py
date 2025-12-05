@@ -1,4 +1,4 @@
-"""Demo script for showcasing Cord-TUI features."""
+"""Demo script for showcasing phosphor features."""
 
 import asyncio
 import time
@@ -60,7 +60,7 @@ async def demo_teletext():
 
 async def main():
     """Run the full demo."""
-    print("🚀 CORD-TUI DEMO SCRIPT")
+    print("🚀 phosphor DEMO SCRIPT")
     print("=" * 50)
     print("This script simulates the key features:")
     print("1. Teletext Dashboard (F1)")

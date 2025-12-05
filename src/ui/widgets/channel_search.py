@@ -34,19 +34,19 @@ class ChannelSearchScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         """Compose the channel search dialog."""
         with Container(id="channel-search-dialog"):
-            yield Static("Join Channel", classes="dialog-title")
+            yield Static("[ JOIN CHANNEL ]", classes="dialog-title")
             
             with Vertical():
                 yield Input(
-                    placeholder="Type channel name and press Enter...",
+                    placeholder="#channel",
                     id="channel-search-input"
                 )
                 
-                yield Static("Suggestions:", classes="section-header")
+                yield Static("> Suggestions", classes="section-header")
                 yield ListView(id="suggestions-list")
                 
                 with Horizontal():
-                    yield Button("Cancel", id="cancel-btn")
+                    yield Button("[ ESC ] Cancel", id="cancel-btn")
     
     def on_mount(self):
         """Focus the input when mounted."""
@@ -88,11 +88,11 @@ class ChannelSearchScreen(ModalScreen):
         suggestions = self._generate_suggestions(search_term)
         
         if not suggestions:
-            suggestions_list.append(ListItem(Label("💡 Start typing to see suggestions")))
+            suggestions_list.append(ListItem(Label("  Type to search..."), classes="info-item"))
             return
         
         for suggestion in suggestions[:8]:  # Limit to 8 suggestions
-            item = ListItem(Label(f"💡 {suggestion}"), classes="suggestion-item")
+            item = ListItem(Label(f"  > {suggestion}"), classes="suggestion-item")
             item.suggestion_text = suggestion
             suggestions_list.append(item)
     

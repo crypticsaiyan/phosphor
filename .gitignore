@@ -38,11 +38,11 @@ Thumbs.db
 *.log
 
 # Config overrides
-.cord/local.json
+.phosphor/local.json
 
 # User-specific settings (should not be committed)
-.cord/last_nick.json
-.cord/bookmarks.json
+.phosphor/last_nick.json
+.phosphor/bookmarks.json
 
 # Azure credentials and secrets
 .env*

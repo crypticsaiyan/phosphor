@@ -44,11 +44,11 @@ class ConnectionStatus(Message):
         self.status = status
 
 
-class CordTUI(App):
-    """The main Cord-TUI application."""
+class Phosphor(App):
+    """The main phosphor application."""
     
     CSS_PATH = "styles.tcss"
-    TITLE = "Cord-TUI"
+    TITLE = "phosphor"
     
     BINDINGS = [
         Binding("f1", "toggle_teletext", "Teletext", show=True),
@@ -85,16 +85,16 @@ class CordTUI(App):
         self.wormhole.set_status_callback(self._on_wormhole_status)
     
     def _load_config(self) -> dict:
-        """Load configuration from .cord/config.json."""
-        config_path = Path(".cord/config.json")
+        """Load configuration from .phosphor/config.json."""
+        config_path = Path(".phosphor/config.json")
         if config_path.exists():
             with open(config_path) as f:
                 return json.load(f)
         return {}
     
     def _load_bookmarks(self) -> list[str]:
-        """Load bookmarked channels from .cord/bookmarks.json."""
-        bookmarks_path = Path(".cord/bookmarks.json")
+        """Load bookmarked channels from .phosphor/bookmarks.json."""
+        bookmarks_path = Path(".phosphor/bookmarks.json")
         if bookmarks_path.exists():
             try:
                 with open(bookmarks_path) as f:
@@ -105,8 +105,8 @@ class CordTUI(App):
         return []
     
     def _save_bookmarks(self):
-        """Save bookmarked channels to .cord/bookmarks.json."""
-        bookmarks_path = Path(".cord/bookmarks.json")
+        """Save bookmarked channels to .phosphor/bookmarks.json."""
+        bookmarks_path = Path(".phosphor/bookmarks.json")
         bookmarks_path.parent.mkdir(exist_ok=True)
         try:
             with open(bookmarks_path, 'w') as f:
@@ -216,7 +216,7 @@ class CordTUI(App):
         
         # Welcome message
         server_name = self.selected_server.get("name", self.selected_server.get("host"))
-        self.chat_pane.add_message("System", f"Welcome to Cord-TUI! 🚀", is_system=True)
+        self.chat_pane.add_message("System", f"Welcome to phosphor! 🚀", is_system=True)
         self.chat_pane.add_message("System", f"Connecting to {server_name} as {self.irc.nick}...", is_system=True)
         self.chat_pane.add_message("System", "Press F1 for Teletext Dashboard", is_system=True)
         

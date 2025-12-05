@@ -38,7 +38,7 @@ class Sidebar(Container):
     def compose(self) -> ComposeResult:
         """Compose the sidebar."""
         with Vertical():
-            yield Static("CORD-TUI", classes="server-name")
+            yield Static("phosphor", classes="server-name")
             tree = Tree("Navigation")
             tree.root.expand()
             
