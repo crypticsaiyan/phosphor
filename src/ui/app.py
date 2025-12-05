@@ -8,12 +8,13 @@ from textual.containers import Container, Horizontal
 from textual.widgets import Header, Footer, Input, Tree
 from textual.binding import Binding
 from textual.message import Message
+from textual.command import Provider, Hit, Hits
 
 from src.ui.widgets.chat_pane import ChatPane
 from src.ui.widgets.sidebar import Sidebar, MemberList
 from src.ui.widgets.channel_search import ChannelSearchScreen
-from src.ui.widgets.command_palette import CommandPalette
-from src.ui.screens import TeletextScreen, HomeScreen
+from src.ui.widgets.command_palette import SlashCommandPalette
+from src.ui.screens import TeletextScreen, HomeScreen, KeysScreen, VolumeScreen
 from src.core.irc_client import IRCClient
 from src.core.mcp_client import MCPClient
 from src.core.wormhole import WormholeClient
@@ -44,16 +45,71 @@ class ConnectionStatus(Message):
         self.status = status
 
 
+class PhosphorCommands(Provider):
+    """Custom command provider for phosphor app."""
+
+    @property
+    def commands(self):
+        """Return all available commands."""
+        return [
+            ("Show Keyboard Shortcuts", "View all keyboard shortcuts and commands", self._show_keys),
+            ("Adjust Volume", "Change audio volume and mute settings", self._show_volume),
+            ("Toggle Teletext Dashboard", "Open the retro teletext dashboard", self._toggle_teletext),
+            ("Search Channels", "Search and join IRC channels", self._search_channels),
+            ("Toggle Bookmark", "Bookmark or unbookmark current channel", self._toggle_bookmark),
+        ]
+
+    async def search(self, query: str) -> Hits:
+        """Search for commands matching the query."""
+        matcher = self.matcher(query)
+        
+        for name, help_text, callback in self.commands:
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(score, name, callback, help=help_text)
+
+    async def discover(self) -> Hits:
+        """Show all commands when palette first opens (no query)."""
+        for name, help_text, callback in self.commands:
+            yield Hit(1.0, name, callback, help=help_text)
+
+    async def _show_keys(self) -> None:
+        """Show the keyboard shortcuts screen."""
+        self.app.push_screen(KeysScreen())
+
+    async def _show_volume(self) -> None:
+        """Show the volume control screen."""
+        self.app.push_screen(VolumeScreen())
+
+    async def _toggle_teletext(self) -> None:
+        """Toggle the teletext dashboard."""
+        if hasattr(self.app, 'action_toggle_teletext'):
+            self.app.action_toggle_teletext()
+
+    async def _search_channels(self) -> None:
+        """Open channel search."""
+        if hasattr(self.app, 'action_search_channels'):
+            self.app.action_search_channels()
+
+    async def _toggle_bookmark(self) -> None:
+        """Toggle bookmark on current channel."""
+        if hasattr(self.app, 'action_toggle_bookmark'):
+            self.app.action_toggle_bookmark()
+
+
 class Phosphor(App):
     """The main phosphor application."""
     
     CSS_PATH = "styles.tcss"
     TITLE = "phosphor"
     
+    COMMANDS = {PhosphorCommands}
+    
     BINDINGS = [
         Binding("f1", "toggle_teletext", "Teletext", show=True),
         Binding("ctrl+j", "search_channels", "Join", show=True),
         Binding("ctrl+b", "toggle_bookmark", "Bookmark", show=True),
+        Binding("question_mark", "show_keys", "Keys", show=True),
         Binding("left", "focus_prev_section", "Left", show=False),
         Binding("right", "focus_next_section", "Right", show=False),
         Binding("slash", "focus_input", "Focus", show=False),
@@ -127,7 +183,7 @@ class Phosphor(App):
             # Center - chat pane
             with Container(id="chat-container"):
                 yield ChatPane(id="chat-pane")
-                yield CommandPalette(id="command-palette")
+                yield SlashCommandPalette(id="command-palette")
                 yield Input(
                     placeholder=f"Message {self.current_channel}",
                     id="input-bar"
@@ -539,7 +595,7 @@ class Phosphor(App):
             return
 
         try:
-            palette = self.query_one("#command-palette", CommandPalette)
+            palette = self.query_one("#command-palette", SlashCommandPalette)
         except Exception:
             return
 
@@ -562,7 +618,7 @@ class Phosphor(App):
             return
 
         try:
-            palette = self.query_one("#command-palette", CommandPalette)
+            palette = self.query_one("#command-palette", SlashCommandPalette)
         except Exception:
             return
 
@@ -600,7 +656,7 @@ class Phosphor(App):
 
         # Hide command palette on submit
         try:
-            palette = self.query_one("#command-palette", CommandPalette)
+            palette = self.query_one("#command-palette", SlashCommandPalette)
             palette.hide()
         except Exception:
             pass
@@ -933,6 +989,10 @@ class Phosphor(App):
     def action_toggle_teletext(self):
         """Toggle the Teletext dashboard."""
         self.push_screen(TeletextScreen(app_ref=self))
+    
+    def action_show_keys(self):
+        """Show the keyboard shortcuts screen."""
+        self.push_screen(KeysScreen())
     
     def action_focus_prev_section(self):
         """Focus the previous section (left arrow)."""

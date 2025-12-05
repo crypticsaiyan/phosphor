@@ -22,11 +22,11 @@ COMMANDS = [
 ]
 
 
-class CommandPalette(Static):
+class SlashCommandPalette(Static):
     """A popup showing available slash commands."""
 
     DEFAULT_CSS = """
-    CommandPalette {
+    SlashCommandPalette {
         layer: overlay;
         width: 50;
         height: auto;
@@ -37,24 +37,24 @@ class CommandPalette(Static):
         display: none;
     }
 
-    CommandPalette.visible {
+    SlashCommandPalette.visible {
         display: block;
     }
 
-    CommandPalette .command-item {
+    SlashCommandPalette .command-item {
         padding: 0 1;
     }
 
-    CommandPalette .command-item.highlighted {
+    SlashCommandPalette .command-item.highlighted {
         background: $accent;
         color: $text;
     }
 
-    CommandPalette .command-name {
+    SlashCommandPalette .command-name {
         color: $success;
     }
 
-    CommandPalette .command-desc {
+    SlashCommandPalette .command-desc {
         color: $text-muted;
     }
     """

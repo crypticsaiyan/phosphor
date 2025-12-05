@@ -5,29 +5,68 @@ Screen {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   TEXTUAL COMMAND PALETTE (Ctrl+P) - Centered Horizontally & Vertically
+   TEXTUAL COMMAND PALETTE (Ctrl+P) - Built-in Textual command palette
+   Centered box overlay with Discord-inspired styling
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Main command palette screen - full overlay */
 CommandPalette {
-    width: 50;
-    height: auto;
     align: center middle;
-    offset: 0 8;
+    background: rgba(0, 0, 0, 0.7);
 }
 
+/* The main container box */
 CommandPalette > Vertical {
-    width: 50;
+    width: 65;
+    max-width: 85%;
     height: auto;
+    max-height: 28;
+    background: #2f3136;
+    border: tall #5865F2;
+    padding: 1 2;
 }
 
-CommandPalette Input {
+/* Search input area */
+CommandPalette > Vertical > Input {
     width: 100%;
-    height: 1;
+    background: #40444b;
+    color: #dcddde;
+    border: none;
+    padding: 1 2;
+    margin: 1 0;
 }
 
+CommandPalette > Vertical > Input:focus {
+    border: none;
+}
+
+/* Results list */
 CommandPalette OptionList {
     width: 100%;
+    height: auto;
+    max-height: 20;
+    background: #2f3136;
+    border: none;
+    padding: 1 0;
+    scrollbar-background: #2f3136;
+    scrollbar-color: #5865F2;
 }
+
+CommandPalette OptionList > .option-list--option {
+    padding: 1 3;
+    color: #dcddde;
+}
+
+CommandPalette OptionList > .option-list--option-highlighted {
+    background: #5865F2;
+    color: #ffffff;
+}
+
+CommandPalette OptionList > .option-list--option-hover {
+    background: #393c43;
+}
+
+/* KeysScreen CSS is defined in the class DEFAULT_CSS */
 
 
 #sidebar {
@@ -429,6 +468,8 @@ ListView > ListItem.-highlight {
     padding: 0 1;
 }
 
+
+/* KeysScreen CSS is defined in the class DEFAULT_CSS */
 
 /* ═══════════════════════════════════════════════════════════════════════════
    COMMAND PALETTE - Slash command suggestions

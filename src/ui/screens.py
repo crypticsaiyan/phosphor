@@ -625,3 +625,230 @@ class TeletextScreen(Screen):
     def action_toggle_teletext(self):
         """Return to chat screen."""
         self.app.pop_screen()
+
+
+class KeysScreen(Screen):
+    """Modal screen showing keyboard shortcuts and commands."""
+
+    BINDINGS = [
+        ("escape", "close", "Close"),
+    ]
+
+    DEFAULT_CSS = """
+    KeysScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.9);
+    }
+    
+    KeysScreen > Static {
+        width: auto;
+        height: auto;
+        background: #1a1a2e;
+        padding: 1 3;
+        border: solid #5865F2;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Compose the keys screen."""
+        yield Static(self._render_help())
+
+    def _render_help(self) -> str:
+        """Render all help content."""
+        lines = []
+        
+        # Header
+        lines.append("[bold yellow]PHOSPHOR HELP & SHORTCUTS[/]")
+        lines.append("")
+        
+        # Keyboard shortcuts section
+        lines.append("[bold magenta]KEYBOARD SHORTCUTS[/]")
+        
+        shortcuts = [
+            ("F1", "Toggle Teletext Dashboard"),
+            ("Ctrl+P", "Open Command Palette"),
+            ("Ctrl+J", "Search/Join Channels"),
+            ("Ctrl+B", "Bookmark Current Channel"),
+            ("?", "Show This Help Screen"),
+            ("Ctrl+C", "Quit Application"),
+            ("←/→", "Navigate Between Sections"),
+            ("/", "Focus Message Input"),
+            ("Ctrl+/", "Unfocus Input"),
+            ("↑/↓", "Navigate Lists"),
+            ("Tab", "Auto-complete Command"),
+            ("Enter", "Send Message / Confirm"),
+            ("ESC", "Close Dialogs / Cancel"),
+        ]
+        
+        for key, desc in shortcuts:
+            lines.append(f"  [green]{key:12}[/] [white]{desc}[/]")
+        
+        lines.append("")
+        
+        # Slash commands section
+        lines.append("[bold magenta]SLASH COMMANDS[/] [dim](type in message input)[/]")
+        
+        commands = [
+            ("/join #channel", "Join a channel"),
+            ("/msg nick text", "Send direct message"),
+            ("/dm nick", "Start DM conversation"),
+            ("/close", "Close current DM"),
+            ("/bookmark", "Bookmark current channel"),
+            ("/unbookmark", "Remove channel bookmark"),
+            ("/bookmarks", "List all bookmarks"),
+            ("/send filepath", "Send file via wormhole"),
+            ("/grab code", "Receive file via wormhole"),
+            ("/ai question", "Ask AI assistant"),
+        ]
+        
+        for cmd, desc in commands:
+            lines.append(f"  [yellow]{cmd:16}[/] [white]{desc}[/]")
+        
+        lines.append("")
+        
+        # Command palette section
+        lines.append("[bold magenta]COMMAND PALETTE[/] [dim](Ctrl+P)[/]")
+        lines.append("  [white]Show Keyboard Shortcuts[/]")
+        lines.append("  [white]Adjust Volume[/]")
+        lines.append("  [white]Toggle Teletext Dashboard[/]")
+        lines.append("  [white]Search Channels[/]")
+        lines.append("  [white]Toggle Bookmark[/]")
+        lines.append("")
+        
+        # Footer
+        lines.append("[dim]Press ESC to close[/]")
+        
+        return "\n".join(lines)
+
+    def action_close(self):
+        """Close the keys screen."""
+        self.app.pop_screen()
+
+
+class VolumeScreen(Screen):
+    """Modal screen for adjusting audio volume."""
+
+    BINDINGS = [
+        ("escape", "close", "Close"),
+        ("left", "decrease_volume", "Decrease"),
+        ("right", "increase_volume", "Increase"),
+        ("up", "increase_volume", "Increase"),
+        ("down", "decrease_volume", "Decrease"),
+        ("m", "toggle_mute", "Mute"),
+        ("enter", "close", "Confirm"),
+    ]
+
+    DEFAULT_CSS = """
+    VolumeScreen {
+        align: center middle;
+        background: rgba(0, 0, 0, 0.9);
+    }
+    
+    VolumeScreen > Static {
+        width: auto;
+        height: auto;
+        background: #1a1a2e;
+        padding: 2 4;
+        border: solid #5865F2;
+    }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.volume = 0.5
+        self.audio_enabled = True
+        self._load_settings()
+
+    def _load_settings(self):
+        """Load current audio settings from app."""
+        if hasattr(self.app, 'audio') and self.app.audio:
+            self.volume = getattr(self.app.audio, 'volume', 0.5)
+            self.audio_enabled = getattr(self.app.audio, 'enabled', True)
+
+    def compose(self) -> ComposeResult:
+        """Compose the volume screen."""
+        yield Static(self._render_volume(), id="volume-content")
+
+    def on_mount(self):
+        """Load settings when mounted."""
+        self._load_settings()
+        self._update_display()
+
+    def _render_volume_bar(self) -> str:
+        """Render the volume bar."""
+        if not self.audio_enabled:
+            return "[dim]░░░░░░░░░░░░░░░░░░░░[/] [red]MUTED[/]"
+        
+        filled = int(self.volume * 20)
+        bar = "█" * filled + "░" * (20 - filled)
+        percent = int(self.volume * 100)
+        
+        # Color based on volume level
+        if percent < 30:
+            color = "green"
+        elif percent < 70:
+            color = "yellow"
+        else:
+            color = "red"
+        
+        return f"[{color}]{bar}[/] [white]{percent:3d}%[/]"
+
+    def _render_volume(self) -> str:
+        """Render the volume control UI."""
+        lines = []
+        
+        lines.append("[bold yellow]VOLUME CONTROL[/]")
+        lines.append("")
+        lines.append(self._render_volume_bar())
+        lines.append("")
+        
+        # Audio toggle
+        if self.audio_enabled:
+            lines.append("[green]●[/] [white]Audio ON[/]")
+        else:
+            lines.append("[red]●[/] [white]Audio OFF (Muted)[/]")
+        
+        lines.append("")
+        lines.append("[dim]←/→ or ↑/↓[/]  [white]Adjust volume[/]")
+        lines.append("[dim]M[/]          [white]Toggle mute[/]")
+        lines.append("[dim]ESC/Enter[/]  [white]Close[/]")
+        
+        return "\n".join(lines)
+
+    def _update_display(self):
+        """Update the display."""
+        try:
+            content = self.query_one("#volume-content", Static)
+            content.update(self._render_volume())
+        except Exception:
+            pass
+
+    def _apply_volume(self):
+        """Apply volume changes to the app's audio engine."""
+        if hasattr(self.app, 'audio') and self.app.audio:
+            self.app.audio.volume = self.volume
+            self.app.audio.enabled = self.audio_enabled
+
+    def action_increase_volume(self):
+        """Increase volume by 10%."""
+        if self.audio_enabled:
+            self.volume = min(1.0, self.volume + 0.1)
+            self._apply_volume()
+            self._update_display()
+
+    def action_decrease_volume(self):
+        """Decrease volume by 10%."""
+        if self.audio_enabled:
+            self.volume = max(0.0, self.volume - 0.1)
+            self._apply_volume()
+            self._update_display()
+
+    def action_toggle_mute(self):
+        """Toggle audio mute."""
+        self.audio_enabled = not self.audio_enabled
+        self._apply_volume()
+        self._update_display()
+
+    def action_close(self):
+        """Close the volume screen."""
+        self.app.pop_screen()
