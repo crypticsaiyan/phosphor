@@ -18,36 +18,74 @@ class Sidebar(Container):
             super().__init__()
             self.channel = channel
     
+    class DirectMessageSelected(Message):
+        """Message posted when a DM conversation is selected."""
+        
+        def __init__(self, nick: str):
+            super().__init__()
+            self.nick = nick
+    
     def __init__(self, channels: list[str], bookmarked_channels: list[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.channels = channels
         self.bookmarked_channels = bookmarked_channels or []
         self.active_channel = None
+        self.active_dm = None  # Currently selected DM
+        self.dm_conversations = []  # List of nicks with active DM conversations
+        self.dm_unread = {}  # Track unread DMs: {nick: count}
     
     def compose(self) -> ComposeResult:
         """Compose the sidebar."""
         with Vertical():
             yield Static("CORD-TUI", classes="server-name")
-            tree = Tree("Channels")
+            tree = Tree("Navigation")
             tree.root.expand()
+            
+            # Add DM section
+            dm_node = tree.root.add("💬 Direct Messages", data="__dm_section__")
+            dm_node.expand()
+            for nick in self.dm_conversations:
+                unread = self.dm_unread.get(nick, 0)
+                label = f"  {nick}" + (f" ({unread})" if unread > 0 else "")
+                dm_node.add_leaf(label, data=f"dm:{nick}")
+            
+            # Add channels section
+            channels_node = tree.root.add("# Channels", data="__channels_section__")
+            channels_node.expand()
             
             # Add bookmarked channels first with a star
             if self.bookmarked_channels:
                 for channel in self.bookmarked_channels:
-                    tree.root.add_leaf(f"⭐ {channel}", data=channel)
+                    channels_node.add_leaf(f"⭐ {channel}", data=channel)
             
             # Add regular channels
             for channel in self.channels:
                 if channel not in self.bookmarked_channels:
-                    tree.root.add_leaf(channel, data=channel)
+                    channels_node.add_leaf(f"  {channel}", data=channel)
             
             yield tree
     
     def on_tree_node_selected(self, event: Tree.NodeSelected):
-        """Handle channel selection."""
+        """Handle channel or DM selection."""
         if event.node.data:
-            self.active_channel = event.node.data
-            self.post_message(self.ChannelSelected(event.node.data))
+            data = event.node.data
+            # Skip section headers
+            if data in ("__dm_section__", "__channels_section__"):
+                return
+            
+            # Handle DM selection
+            if data.startswith("dm:"):
+                nick = data[3:]  # Remove "dm:" prefix
+                self.active_dm = nick
+                self.active_channel = None
+                # Clear unread count
+                self.dm_unread[nick] = 0
+                self.post_message(self.DirectMessageSelected(nick))
+            else:
+                # Handle channel selection
+                self.active_channel = data
+                self.active_dm = None
+                self.post_message(self.ChannelSelected(data))
     
     def update_channels(self, channels: list[str]):
         """Update the channel list with new channels."""
@@ -66,16 +104,13 @@ class Sidebar(Container):
             self.bookmarked_channels.remove(channel)
             self._refresh_tree(select_channel=self.active_channel)
     
-    def _refresh_tree(self, select_channel: str = None):
+    def _refresh_tree(self, select_channel: str = None, select_dm: str = None):
         """Refresh the channel tree display."""
         tree = self.query_one(Tree)
         
-        # Use provided select_channel, or fall back to active_channel, or currently selected
-        target_channel = select_channel
-        if target_channel is None:
-            target_channel = self.active_channel
-        if target_channel is None and tree.cursor_node and tree.cursor_node.data:
-            target_channel = tree.cursor_node.data
+        # Use provided select_channel/dm, or fall back to active ones
+        target_channel = select_channel or self.active_channel
+        target_dm = select_dm or self.active_dm
         
         # Clear tree by removing all children from root
         tree.clear()
@@ -85,9 +120,28 @@ class Sidebar(Container):
         target_line = None
         line_index = 0
         
+        # Add DM section
+        dm_node = tree.root.add("💬 Direct Messages", data="__dm_section__")
+        dm_node.expand()
+        line_index += 1
+        
+        for nick in self.dm_conversations:
+            unread = self.dm_unread.get(nick, 0)
+            label = f"  {nick}" + (f" ({unread})" if unread > 0 else "")
+            dm_node.add_leaf(label, data=f"dm:{nick}")
+            if nick == target_dm:
+                target_line = line_index
+                self.active_dm = nick
+            line_index += 1
+        
+        # Add channels section
+        channels_node = tree.root.add("# Channels", data="__channels_section__")
+        channels_node.expand()
+        line_index += 1
+        
         # Add bookmarked channels first with a star
         for channel in self.bookmarked_channels:
-            tree.root.add_leaf(f"⭐ {channel}", data=channel)
+            channels_node.add_leaf(f"⭐ {channel}", data=channel)
             if channel == target_channel:
                 target_line = line_index
                 self.active_channel = channel
@@ -96,13 +150,13 @@ class Sidebar(Container):
         # Add regular channels (not bookmarked)
         for channel in self.channels:
             if channel not in self.bookmarked_channels:
-                tree.root.add_leaf(channel, data=channel)
+                channels_node.add_leaf(f"  {channel}", data=channel)
                 if channel == target_channel:
                     target_line = line_index
                     self.active_channel = channel
                 line_index += 1
         
-        # Move cursor to target channel (line 0 is root, so add 1)
+        # Move cursor to target (line 0 is root, so add 1)
         if target_line is not None:
             tree.cursor_line = target_line + 1
     
@@ -127,14 +181,42 @@ class Sidebar(Container):
     
     def select_channel(self, channel: str):
         """Select a channel in the tree by name."""
-        tree = self.query_one(Tree)
-        for i, node in enumerate(tree.root.children):
-            if node.data == channel:
-                # Move cursor to this line (line 0 is root, so add 1)
-                tree.cursor_line = i + 1
-                tree.scroll_to_node(node)
-                self.active_channel = channel
-                break
+        self._refresh_tree(select_channel=channel)
+    
+    def add_dm_conversation(self, nick: str):
+        """Add a DM conversation to the sidebar."""
+        if nick not in self.dm_conversations:
+            self.dm_conversations.insert(0, nick)  # Add to top
+            self._refresh_tree()
+    
+    def remove_dm_conversation(self, nick: str):
+        """Remove a DM conversation from the sidebar."""
+        if nick in self.dm_conversations:
+            self.dm_conversations.remove(nick)
+            if nick in self.dm_unread:
+                del self.dm_unread[nick]
+            self._refresh_tree()
+    
+    def increment_dm_unread(self, nick: str):
+        """Increment unread count for a DM conversation."""
+        if nick not in self.dm_conversations:
+            self.dm_conversations.insert(0, nick)
+        self.dm_unread[nick] = self.dm_unread.get(nick, 0) + 1
+        self._refresh_tree()
+    
+    def clear_dm_unread(self, nick: str):
+        """Clear unread count for a DM conversation."""
+        self.dm_unread[nick] = 0
+        self._refresh_tree()
+    
+    def select_dm(self, nick: str):
+        """Select a DM conversation in the tree."""
+        if nick not in self.dm_conversations:
+            self.dm_conversations.insert(0, nick)
+        self.active_dm = nick
+        self.active_channel = None
+        self.dm_unread[nick] = 0
+        self._refresh_tree(select_dm=nick)
 
 
 class MemberList(Container):
@@ -142,16 +224,27 @@ class MemberList(Container):
     
     can_focus = True
     
+    class MemberClicked(Message):
+        """Message posted when a member is clicked for DM."""
+        
+        def __init__(self, nick: str):
+            super().__init__()
+            self.nick = nick
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.members = []
         self.current_nick = None  # The current user's IRC nick
+        self.selected_index = 0  # For keyboard navigation
     
     def compose(self) -> ComposeResult:
         """Compose the member list."""
         with Vertical():
             yield Static("Members (0)", id="member-count")
-            yield Static("", id="member-names")
+            yield Static("[dim]Click or Enter to DM[/]", id="member-hint")
+            tree = Tree("Users")
+            tree.root.expand()
+            yield tree
     
     def set_current_nick(self, nick: str):
         """Set the current user's nick for highlighting."""
@@ -164,19 +257,32 @@ class MemberList(Container):
         # Update count header
         self.query_one("#member-count", Static).update(f"Members ({len(self.members)})")
         
-        # Update names list with colored usernames
-        lines = []
+        # Update tree with members
+        tree = self.query_one(Tree)
+        tree.clear()
+        tree.root.expand()
+        
         for m in self.members:
             # Strip IRC prefixes for comparison
             clean_name = m.lstrip("@+%~&")
             if self.current_nick and clean_name == self.current_nick:
-                lines.append(f"• {format_username_colored(m)} (you)")
+                label = f"{format_username_colored(m)} (you)"
             else:
-                lines.append(f"• {format_username_colored(m)}")
-        names_text = "\n".join(lines)
-        self.query_one("#member-names", Static).update(names_text)
+                label = format_username_colored(m)
+            tree.root.add_leaf(label, data=clean_name)
+    
+    def on_tree_node_selected(self, event: Tree.NodeSelected):
+        """Handle member selection for DM."""
+        if event.node.data:
+            nick = event.node.data
+            # Don't DM yourself
+            if nick != self.current_nick:
+                self.post_message(self.MemberClicked(nick))
     
     def show_loading(self, channel: str):
         """Show loading state for member list."""
         self.query_one("#member-count", Static).update(f"Loading {channel}...")
-        self.query_one("#member-names", Static).update("Loading...")
+        tree = self.query_one(Tree)
+        tree.clear()
+        tree.root.expand()
+        tree.root.add_leaf("Loading...", data=None)

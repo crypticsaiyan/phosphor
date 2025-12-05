@@ -20,6 +20,14 @@ from src.core.wormhole import WormholeClient
 from src.core.audio import AudioEngine
 
 
+class DMNotification(Message):
+    """Message to notify of incoming DM."""
+    def __init__(self, from_nick: str, content: str):
+        super().__init__()
+        self.from_nick = from_nick
+        self.content = content
+
+
 class MemberListUpdate(Message):
     """Message to update member list."""
     def __init__(self, channel: str, members: list[str]):
@@ -61,6 +69,7 @@ class CordTUI(App):
         self.config = self._load_config()
         self.bookmarks = self._load_bookmarks()
         self.current_channel = "#general"
+        self.current_dm = None  # Currently active DM conversation (nick)
         self.irc_connected = False
         self.connection_status = "disconnected"  # disconnected, connecting, connected
         self.channels_joined = set()  # Track which channels we've successfully joined
@@ -269,10 +278,33 @@ class CordTUI(App):
     
     def _on_irc_message(self, nick: str, target: str, message: str):
         """Handle incoming IRC messages."""
-        # target is the channel the message was sent to
         # miniirc runs in a separate thread, so we need call_from_thread
-        self.call_from_thread(self.chat_pane.add_message, nick, message, False, target)
+        
+        # Check if this is a private message (target is our nick, not a channel)
+        if target == self.irc.nick:
+            # This is a DM from 'nick' to us
+            self.call_from_thread(self._handle_dm_received, nick, message)
+        else:
+            # Regular channel message
+            self.call_from_thread(self.chat_pane.add_message, nick, message, False, target)
+        
         self.audio.process_log(message)
+    
+    def _handle_dm_received(self, from_nick: str, message: str):
+        """Handle received DM - called from main thread."""
+        sidebar = self.query_one("#sidebar", Sidebar)
+        
+        # Add to DM messages
+        self.chat_pane.add_message(from_nick, message, False, dm_nick=from_nick)
+        
+        # If not currently viewing this DM, show notification and increment unread
+        if self.current_dm != from_nick:
+            sidebar.increment_dm_unread(from_nick)
+            # Show notification in current view
+            self.chat_pane.add_message("System", f"💬 New DM from {from_nick}", is_system=True)
+        else:
+            # Ensure conversation is in sidebar
+            sidebar.add_dm_conversation(from_nick)
     
     def _on_members_update(self, channel: str, members: list[str]):
         """Handle member list updates."""
@@ -336,6 +368,7 @@ class CordTUI(App):
     def on_sidebar_channel_selected(self, event: Sidebar.ChannelSelected):
         """Handle channel selection from sidebar."""
         self.current_channel = event.channel
+        self.current_dm = None  # Clear DM mode
         
         # Update placeholder based on connection and channel status
         if not self.irc_connected:
@@ -369,6 +402,58 @@ class CordTUI(App):
         else:
             # Not joined yet
             self.member_list.show_loading(self.current_channel)
+    
+    def on_sidebar_direct_message_selected(self, event: Sidebar.DirectMessageSelected):
+        """Handle DM selection from sidebar."""
+        self.current_dm = event.nick
+        self.current_channel = None  # Clear channel mode
+        
+        # Update placeholder
+        self.input_bar.placeholder = f"Message @{event.nick}"
+        
+        # Switch chat pane to show this DM conversation
+        self.chat_pane.switch_dm(event.nick)
+        
+        # Clear unread count
+        sidebar = self.query_one("#sidebar", Sidebar)
+        sidebar.clear_dm_unread(event.nick)
+        
+        # Show DM header
+        self.chat_pane.add_message("System", f"💬 Direct message with {event.nick}", is_system=True)
+        
+        # Hide member list for DMs (or show just the DM partner)
+        self.member_list.update_members([event.nick])
+    
+    def on_member_list_member_clicked(self, event: MemberList.MemberClicked):
+        """Handle member click to start DM."""
+        nick = event.nick
+        
+        if not self.irc_connected:
+            self.chat_pane.add_message("System", "Not connected to IRC.", is_system=True)
+            return
+        
+        # Start DM with this user
+        self._start_dm(nick)
+    
+    def _start_dm(self, nick: str):
+        """Start or switch to a DM conversation with a user."""
+        sidebar = self.query_one("#sidebar", Sidebar)
+        
+        # Add to DM conversations if not already there
+        sidebar.add_dm_conversation(nick)
+        
+        # Switch to DM view
+        self.current_dm = nick
+        self.current_channel = None
+        
+        # Update UI
+        self.input_bar.placeholder = f"Message @{nick}"
+        self.chat_pane.switch_dm(nick)
+        sidebar.select_dm(nick)
+        
+        # Show DM header
+        self.chat_pane.add_message("System", f"💬 Direct message with {nick}", is_system=True)
+        self.chat_pane.add_message("System", "Type a message to start chatting.", is_system=True)
 
     def on_input_changed(self, event: Input.Changed):
         """Handle input text changes to show command palette."""
@@ -448,14 +533,30 @@ class CordTUI(App):
 
         self.input_bar.value = ""
         
-        # Check if we're in a valid channel
-        if not self.current_channel or not self.current_channel.startswith("#"):
-            self.chat_pane.add_message("System", "Not in a channel. Select a channel first.", is_system=True)
-            return
-        
         # Check if we're connected
         if not self.irc_connected:
             self.chat_pane.add_message("System", "Not connected to IRC. Please wait for connection.", is_system=True)
+            return
+        
+        # Handle commands
+        if message.startswith("/"):
+            await self._handle_command(message)
+            return
+        
+        # Check if we're in DM mode
+        if self.current_dm:
+            # Send DM
+            try:
+                self.irc.send_message(self.current_dm, message)
+                # Add to DM history
+                self.chat_pane.add_message(self.irc.nick, message, False, dm_nick=self.current_dm)
+            except Exception as e:
+                self.chat_pane.add_message("System", f"Failed to send DM: {e}", is_system=True)
+            return
+        
+        # Check if we're in a valid channel
+        if not self.current_channel or not self.current_channel.startswith("#"):
+            self.chat_pane.add_message("System", "Not in a channel or DM. Select one first.", is_system=True)
             return
         
         # Check if we're still joining this channel
@@ -468,17 +569,13 @@ class CordTUI(App):
             self.chat_pane.add_message("System", f"Not joined to {self.current_channel}. Use /join to join.", is_system=True)
             return
         
-        # Handle commands
-        if message.startswith("/"):
-            await self._handle_command(message)
-        else:
-            # Send to IRC
-            try:
-                self.irc.send_message(self.current_channel, message)
-                # Add to current channel's history using actual nick for consistent coloring
-                self.chat_pane.add_message(self.irc.nick, message, False, self.current_channel)
-            except Exception as e:
-                self.chat_pane.add_message("System", f"Failed to send: {e}", is_system=True)
+        # Send to channel
+        try:
+            self.irc.send_message(self.current_channel, message)
+            # Add to current channel's history using actual nick for consistent coloring
+            self.chat_pane.add_message(self.irc.nick, message, False, self.current_channel)
+        except Exception as e:
+            self.chat_pane.add_message("System", f"Failed to send: {e}", is_system=True)
     
     async def _handle_command(self, command: str):
         """Handle slash commands."""
@@ -487,7 +584,7 @@ class CordTUI(App):
             # Just "/" with no command
             self.chat_pane.add_message(
                 "System",
-                "Available commands: /join, /bookmark, /unbookmark, /bookmarks, /send, /grab, /ai",
+                "Available commands: /join, /msg, /dm, /close, /bookmark, /unbookmark, /bookmarks, /send, /grab, /ai",
                 is_system=True,
             )
             return
@@ -636,9 +733,53 @@ class CordTUI(App):
                 for channel in self.bookmarks:
                     self.chat_pane.add_message("System", f"  ⭐ {channel}", is_system=True)
         
+        elif cmd == "msg" or cmd == "dm":
+            # Start or send a DM
+            if not args:
+                self.chat_pane.add_message("System", "Usage: /msg <nick> [message]", is_system=True)
+                return
+            
+            parts = args.split(maxsplit=1)
+            target_nick = parts[0]
+            dm_message = parts[1] if len(parts) > 1 else None
+            
+            # Add to DM conversations
+            sidebar = self.query_one("#sidebar", Sidebar)
+            sidebar.add_dm_conversation(target_nick)
+            
+            if dm_message:
+                # Send the message directly
+                try:
+                    self.irc.send_message(target_nick, dm_message)
+                    self.chat_pane.add_message(self.irc.nick, dm_message, False, dm_nick=target_nick)
+                    self.chat_pane.add_message("System", f"💬 Sent DM to {target_nick}", is_system=True)
+                except Exception as e:
+                    self.chat_pane.add_message("System", f"Failed to send DM: {e}", is_system=True)
+            else:
+                # Just switch to DM view
+                self._start_dm(target_nick)
+        
+        elif cmd == "close":
+            # Close current DM conversation
+            if self.current_dm:
+                sidebar = self.query_one("#sidebar", Sidebar)
+                closed_nick = self.current_dm
+                sidebar.remove_dm_conversation(self.current_dm)
+                self.current_dm = None
+                
+                # Switch back to first channel
+                if self.channels_joined:
+                    first_channel = list(self.channels_joined)[0]
+                    self.current_channel = first_channel
+                    self.chat_pane.switch_channel(first_channel)
+                    self.input_bar.placeholder = f"Message {first_channel}"
+                    self.chat_pane.add_message("System", f"Closed DM with {closed_nick}", is_system=True)
+            else:
+                self.chat_pane.add_message("System", "Not in a DM conversation.", is_system=True)
+        
         else:
             self.chat_pane.add_message("System", f"Unknown command: /{cmd}", is_system=True)
-            self.chat_pane.add_message("System", "Available commands: /join, /bookmark, /unbookmark, /bookmarks, /send, /grab, /ai", is_system=True)
+            self.chat_pane.add_message("System", "Available commands: /join, /msg, /dm, /close, /bookmark, /unbookmark, /bookmarks, /send, /grab, /ai", is_system=True)
     
     def action_toggle_teletext(self):
         """Toggle the Teletext dashboard."""

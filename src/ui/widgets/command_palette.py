@@ -10,6 +10,9 @@ from textual.message import Message
 # Available commands with descriptions
 COMMANDS = [
     ("/join", "Join or search for a channel"),
+    ("/msg", "Send a direct message: /msg <nick> [message]"),
+    ("/dm", "Start a DM conversation: /dm <nick>"),
+    ("/close", "Close current DM conversation"),
     ("/bookmark", "Bookmark current or specified channel"),
     ("/unbookmark", "Remove bookmark from channel"),
     ("/bookmarks", "List all bookmarked channels"),

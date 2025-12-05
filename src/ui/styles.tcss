@@ -5,7 +5,7 @@ Screen {
 }
 
 #sidebar {
-    width: 20;
+    width: 28;
     background: #2f3136;
     border: solid #202225;
 }
@@ -27,7 +27,7 @@ Screen {
 }
 
 #member-list {
-    width: 20;
+    width: 26;
     background: #2f3136;
     border: solid #202225;
 }
@@ -68,6 +68,22 @@ Input {
     background: #393c43;
 }
 
+/* DM section styling */
+.dm-item {
+    color: #43b581;
+    padding: 0 1;
+}
+
+.dm-item:hover {
+    background: #393c43;
+    color: #ffffff;
+}
+
+.dm-unread {
+    color: #faa61a;
+    text-style: bold;
+}
+
 .unread {
     color: #ffffff;
     text-style: bold;
@@ -79,6 +95,13 @@ Input {
 
 .member-offline {
     color: #747f8d;
+}
+
+#member-hint {
+    color: #72767d;
+    text-style: italic;
+    padding: 0 1;
+    height: 1;
 }
 
 .message {

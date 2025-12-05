@@ -16,7 +16,10 @@ class ChatPane(VerticalScroll):
         super().__init__(**kwargs)
         # Store messages per channel: {channel: [(author, content, is_system, timestamp), ...]}
         self.channel_messages = {}
+        # Store DM messages: {nick: [(author, content, is_system, timestamp), ...]}
+        self.dm_messages = {}
         self.current_channel = None
+        self.current_dm = None  # Currently viewing DM with this nick
         self.current_nick = None  # The current user's IRC nick
     
     def _get_timestamp(self) -> str:
@@ -40,8 +43,16 @@ class ChatPane(VerticalScroll):
         
         return Horizontal(content_widget, time_widget, classes="message-row")
     
-    def add_message(self, author: str, content: str, is_system: bool = False, channel: str = None):
-        """Add a message to the chat."""
+    def add_message(self, author: str, content: str, is_system: bool = False, channel: str = None, dm_nick: str = None):
+        """Add a message to the chat.
+        
+        Args:
+            author: Message author
+            content: Message content
+            is_system: Whether this is a system message
+            channel: Channel name (for channel messages)
+            dm_nick: Nick of the DM partner (for DM messages)
+        """
         # Strip leading colon from content if present (IRC protocol artifact)
         content = content.lstrip(": ")
         
@@ -49,13 +60,30 @@ class ChatPane(VerticalScroll):
         timestamp = self._get_timestamp()
         
         # Store message in history
-        if channel:
+        if dm_nick:
+            # DM message
+            if dm_nick not in self.dm_messages:
+                self.dm_messages[dm_nick] = []
+            self.dm_messages[dm_nick].append((author, content, is_system, timestamp))
+            
+            # Only display if viewing this DM conversation
+            if dm_nick == self.current_dm:
+                msg_widget = self._create_message_widget(author, content, is_system, timestamp)
+                self.mount(msg_widget)
+                self.scroll_end(animate=False)
+        elif channel:
+            # Channel message
             if channel not in self.channel_messages:
                 self.channel_messages[channel] = []
             self.channel_messages[channel].append((author, content, is_system, timestamp))
-        
-        # Only display if it's for the current channel or no channel specified (system messages)
-        if channel is None or channel == self.current_channel:
+            
+            # Only display if it's for the current channel
+            if channel == self.current_channel:
+                msg_widget = self._create_message_widget(author, content, is_system, timestamp)
+                self.mount(msg_widget)
+                self.scroll_end(animate=False)
+        else:
+            # System message with no target - show if in current view
             msg_widget = self._create_message_widget(author, content, is_system, timestamp)
             self.mount(msg_widget)
             self.scroll_end(animate=False)
@@ -63,6 +91,7 @@ class ChatPane(VerticalScroll):
     def switch_channel(self, channel: str):
         """Switch to a different channel and restore its message history."""
         self.current_channel = channel
+        self.current_dm = None  # Clear DM view
         
         # Clear current display
         self.remove_children()
@@ -76,6 +105,28 @@ class ChatPane(VerticalScroll):
                 else:
                     author, content, is_system = msg_data
                     timestamp = "--:--"  # Placeholder for old messages without timestamp
+                
+                msg_widget = self._create_message_widget(author, content, is_system, timestamp)
+                self.mount(msg_widget)
+        
+        self.scroll_end(animate=False)
+    
+    def switch_dm(self, nick: str):
+        """Switch to a DM conversation and restore its message history."""
+        self.current_dm = nick
+        self.current_channel = None  # Clear channel view
+        
+        # Clear current display
+        self.remove_children()
+        
+        # Restore messages for this DM
+        if nick in self.dm_messages:
+            for msg_data in self.dm_messages[nick]:
+                if len(msg_data) == 4:
+                    author, content, is_system, timestamp = msg_data
+                else:
+                    author, content, is_system = msg_data
+                    timestamp = "--:--"
                 
                 msg_widget = self._create_message_widget(author, content, is_system, timestamp)
                 self.mount(msg_widget)
